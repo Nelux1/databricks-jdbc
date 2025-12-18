@@ -12,7 +12,7 @@ import com.databricks.jdbc.common.DatabricksJdbcConstants;
 import com.databricks.jdbc.exception.DatabricksHttpException;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.model.client.thrift.generated.*;
-import com.databricks.sdk.service.sql.ColumnInfoTypeName;
+import com.databricks.jdbc.model.core.ColumnInfoTypeName;
 import com.databricks.sdk.service.sql.StatementState;
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -196,9 +196,8 @@ public class DatabricksThriftUtilTest {
 
   private static Stream<Arguments> resultDataTypesForGetColumnValue() {
     return Stream.of(
-        Arguments.of(new TRowSet(), java.util.Collections.emptyList()),
-        Arguments.of(
-            new TRowSet().setColumns(Collections.emptyList()), java.util.Collections.emptyList()),
+        Arguments.of(new TRowSet(), List.of()),
+        Arguments.of(new TRowSet().setColumns(Collections.emptyList()), List.of()),
         Arguments.of(BOOL_ROW_SET, getExpectedResults(BOOL_ROW_SET_VALUES)),
         Arguments.of(BYTE_ROW_SET, getExpectedResults(BYTE_ROW_SET_VALUES)),
         Arguments.of(DOUBLE_ROW_SET, getExpectedResults(DOUBLE_ROW_SET_VALUES)),

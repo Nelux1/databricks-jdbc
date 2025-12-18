@@ -9,6 +9,7 @@ import com.databricks.jdbc.api.internal.IDatabricksConnectionInternal;
 import com.databricks.jdbc.api.internal.IDatabricksSession;
 import com.databricks.jdbc.common.*;
 import com.databricks.jdbc.common.util.DriverUtil;
+import com.databricks.jdbc.common.util.WildcardUtil;
 import com.databricks.jdbc.dbclient.impl.common.MetadataResultSetBuilder;
 import com.databricks.jdbc.dbclient.impl.common.StatementId;
 import com.databricks.jdbc.exception.DatabricksSQLException;
@@ -826,21 +827,21 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
   public int getDefaultTransactionIsolation() throws SQLException {
     LOGGER.debug("public int getDefaultTransactionIsolation()");
     throwExceptionIfConnectionIsClosed();
-    return Connection.TRANSACTION_READ_UNCOMMITTED;
+    return Connection.TRANSACTION_REPEATABLE_READ;
   }
 
   @Override
   public boolean supportsTransactions() throws SQLException {
     LOGGER.debug("public boolean supportsTransactions()");
     throwExceptionIfConnectionIsClosed();
-    return false;
+    return true;
   }
 
   @Override
   public boolean supportsTransactionIsolationLevel(int level) throws SQLException {
     LOGGER.debug("public boolean supportsTransactionIsolationLevel(int level = {})", level);
     throwExceptionIfConnectionIsClosed();
-    return level == Connection.TRANSACTION_READ_UNCOMMITTED;
+    return level == Connection.TRANSACTION_REPEATABLE_READ;
   }
 
   @Override
@@ -885,7 +886,7 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
     return false;
   }
 
-  // JDBC 4.3-only; keep method but drop @Override for JDK 8
+  @Override
   public boolean supportsSharding() throws SQLException {
     LOGGER.debug("public boolean supportsSharding()");
     throwExceptionIfConnectionIsClosed();
@@ -979,6 +980,13 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
   public ResultSet getTables(
       String catalog, String schemaPattern, String tableNamePattern, String[] types)
       throws SQLException {
+
+    if (tableNamePattern != null) {
+      // Making tableNamePattern case-insensitive because the table name is stored as lower case in
+      // information schema
+      tableNamePattern = tableNamePattern.toLowerCase();
+    }
+
     LOGGER.debug(
         "public ResultSet getTables(String catalog = {}, String schemaPattern = {}, String tableNamePattern = {}, String[] types = {})",
         catalog,
@@ -1495,8 +1503,9 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
   @Override
   public ResultSet getSchemas(String catalog, String schemaPattern) throws SQLException {
     LOGGER.debug(
-        "public ResultSet getSchemas(String catalog = %s, String schemaPattern = %s)",
-        catalog, schemaPattern);
+        "public ResultSet getSchemas(String catalog = {}, String schemaPattern = {})",
+        catalog,
+        schemaPattern);
     throwExceptionIfConnectionIsClosed();
 
     return session.getDatabricksMetadataClient().listSchemas(session, catalog, schemaPattern);
@@ -1527,24 +1536,22 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
   public ResultSet getFunctions(String catalog, String schemaPattern, String functionNamePattern)
       throws SQLException {
     LOGGER.debug(
-        String.format(
-            "public ResultSet getFunctions(String catalog = {}, String schemaPattern = {}, String functionNamePattern = {})",
-            catalog,
-            schemaPattern,
-            functionNamePattern));
+        "public ResultSet getFunctions(String catalog = {}, String schemaPattern = {}, String functionNamePattern = {})",
+        catalog,
+        schemaPattern,
+        functionNamePattern);
     throwExceptionIfConnectionIsClosed();
     try {
+      if (WildcardUtil.isNullOrEmpty(functionNamePattern)) {
+        functionNamePattern =
+            "%"; // This is because functionName is a required parameter in thrift flow.
+      }
       return session
           .getDatabricksMetadataClient()
           .listFunctions(session, catalog, schemaPattern, functionNamePattern);
     } catch (Exception e) {
-      LOGGER.error(e, "Unable to fetch functions, returning empty result set");
-      // Return empty result set for functions
-      return metadataResultSetBuilder.getResultSetWithGivenRowsAndColumns(
-          FUNCTION_COLUMNS,
-          new java.util.ArrayList<java.util.List<java.lang.Object>>(),
-          METADATA_STATEMENT_ID,
-          CommandName.LIST_FUNCTIONS);
+      LOGGER.error(e, "Unable to fetch functions, returning empty result set {}", e);
+      return metadataResultSetBuilder.getFunctionsResult(catalog, List.of());
     }
   }
 

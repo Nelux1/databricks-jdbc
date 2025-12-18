@@ -1,10 +1,6 @@
 package com.databricks.jdbc.api.impl.converters;
 
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.ARRAY;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.MAP;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.STRUCT;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.TIMESTAMP;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.VARIANT;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.*;
 
 import com.databricks.jdbc.api.impl.*;
 import com.databricks.jdbc.exception.DatabricksParsingException;
@@ -12,8 +8,8 @@ import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.exception.DatabricksValidationException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
-import com.databricks.sdk.service.sql.ColumnInfo;
-import com.databricks.sdk.service.sql.ColumnInfoTypeName;
+import com.databricks.jdbc.model.core.ColumnInfo;
+import com.databricks.jdbc.model.core.ColumnInfoTypeName;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
@@ -32,6 +28,7 @@ import org.apache.arrow.vector.util.Text;
 public class ArrowToJavaObjectConverter {
   private static final JdbcLogger LOGGER =
       JdbcLoggerFactory.getLogger(ArrowToJavaObjectConverter.class);
+
   private static final List<DateTimeFormatter> DATE_FORMATTERS =
       Arrays.asList(
           DateTimeFormatter.ofPattern("yyyy-MM-dd"),
@@ -86,6 +83,12 @@ public class ArrowToJavaObjectConverter {
       if (arrowMetadata.startsWith(TIMESTAMP)) { // for timestamp_ntz column
         requiredType = ColumnInfoTypeName.TIMESTAMP;
       }
+      if (arrowMetadata.startsWith(GEOMETRY)) {
+        requiredType = ColumnInfoTypeName.GEOMETRY;
+      }
+      if (arrowMetadata.startsWith(GEOGRAPHY)) {
+        requiredType = ColumnInfoTypeName.GEOGRAPHY;
+      }
     }
     if (object == null) {
       return null;
@@ -136,6 +139,9 @@ public class ArrowToJavaObjectConverter {
         }
         IntervalConverter ic = new IntervalConverter(arrowMetadata);
         return ic.toLiteral(object);
+      case GEOMETRY:
+      case GEOGRAPHY:
+        return convertToGeospatial(object, requiredType);
       case NULL:
         return null;
       default:
@@ -163,6 +169,21 @@ public class ArrowToJavaObjectConverter {
     return parser.parseJsonStringToDbStruct(object.toString(), arrowMetadata);
   }
 
+  private static AbstractDatabricksGeospatial convertToGeospatial(
+      Object object, ColumnInfoTypeName type) throws DatabricksSQLException {
+    String ewkt = convertToString(object);
+
+    // Parse EWKT to extract SRID from data
+    // SRID is always present in EWKT unless it's 0, in which case it is handled in
+    // WKTConverter.extractSRIDFromEWKT()
+    int srid = WKTConverter.extractSRIDFromEWKT(ewkt);
+    String cleanWkt = WKTConverter.removeSRIDFromEWKT(ewkt);
+
+    return type == ColumnInfoTypeName.GEOMETRY
+        ? new DatabricksGeometry(cleanWkt, srid)
+        : new DatabricksGeography(cleanWkt, srid);
+  }
+
   private static Object convertToTimestamp(Object object, Optional<String> timeZoneOpt)
       throws DatabricksSQLException {
     if (object instanceof Text) {
@@ -172,10 +193,8 @@ public class ArrowToJavaObjectConverter {
       // timestamp_ntz result is returned as local date time
       return Timestamp.valueOf((LocalDateTime) object);
     }
-    // Divide by 1000 since we need to convert from microseconds to milliseconds.
-    Instant instant =
-        Instant.ofEpochMilli(
-            object instanceof Integer ? ((int) object) / 1000 : ((long) object) / 1000);
+    long timeMicros = object instanceof Integer ? ((int) object) : ((long) object);
+    Instant instant = Instant.ofEpochSecond(timeMicros / 1000_000, (timeMicros % 1000_000) * 1000);
     ZoneId zoneId = getZoneIdFromTimeZoneOpt(timeZoneOpt);
     LocalDateTime localDateTime = LocalDateTime.ofInstant(instant, zoneId);
     return Timestamp.valueOf(localDateTime);

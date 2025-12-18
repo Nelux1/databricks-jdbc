@@ -40,7 +40,9 @@ public class TStatementConf
   public boolean sessionless; // optional
   public @org.apache.thrift.annotation.Nullable TNamespace initialNamespace; // optional
 
-  /** @see TProtocolVersion */
+  /**
+   * @see TProtocolVersion
+   */
   public @org.apache.thrift.annotation.Nullable TProtocolVersion client_protocol; // optional
 
   public long client_protocol_i64; // optional
@@ -52,7 +54,9 @@ public class TStatementConf
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     SESSIONLESS((short) 1, "sessionless"),
     INITIAL_NAMESPACE((short) 2, "initialNamespace"),
-    /** @see TProtocolVersion */
+    /**
+     * @see TProtocolVersion
+     */
     CLIENT_PROTOCOL((short) 3, "client_protocol"),
     CLIENT_PROTOCOL_I64((short) 4, "client_protocol_i64");
 
@@ -246,13 +250,17 @@ public class TStatementConf
     }
   }
 
-  /** @see TProtocolVersion */
+  /**
+   * @see TProtocolVersion
+   */
   @org.apache.thrift.annotation.Nullable
   public TProtocolVersion getClient_protocol() {
     return this.client_protocol;
   }
 
-  /** @see TProtocolVersion */
+  /**
+   * @see TProtocolVersion
+   */
   public TStatementConf setClient_protocol(
       @org.apache.thrift.annotation.Nullable TProtocolVersion client_protocol) {
     this.client_protocol = client_protocol;

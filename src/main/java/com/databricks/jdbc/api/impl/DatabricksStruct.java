@@ -5,6 +5,7 @@ import com.databricks.jdbc.exception.DatabricksDriverException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.ArrayList;
@@ -56,7 +57,9 @@ public class DatabricksStruct implements Struct {
       String fieldType = typeMap.get(fieldName);
       Object value = attributes.get(fieldName);
 
-      if (fieldType.startsWith(DatabricksTypeUtil.STRUCT)) {
+      if (value == null) {
+        convertedAttributes[index] = value;
+      } else if (fieldType.startsWith(DatabricksTypeUtil.STRUCT)) {
         if (value instanceof Map) {
           convertedAttributes[index] = new DatabricksStruct((Map<String, Object>) value, fieldType);
         } else if (value instanceof DatabricksStruct) {
@@ -80,6 +83,9 @@ public class DatabricksStruct implements Struct {
         } else {
           throwConversionException("Map for MAP", value);
         }
+      } else if (fieldType.startsWith(DatabricksTypeUtil.VARIANT)) {
+        // For VARIANT, preserve JsonNode objects as-is, otherwise convert to string
+        convertedAttributes[index] = value;
       } else {
         convertedAttributes[index] = convertSimpleValue(value, fieldType);
       }
@@ -185,9 +191,14 @@ public class DatabricksStruct implements Struct {
       if (val == null) {
         // JSON-like null
         sb.append("null");
-      } else if (val instanceof String) {
-        // Strings get quoted
-        sb.append("\"").append(val).append("\"");
+      } else if (val instanceof JsonNode) {
+        // VARIANT fields represented as JsonNode - preserve JSON structure without quotes
+        sb.append(val.toString());
+      } else if (val instanceof String || DatabricksTypeUtil.isTemporalType(val)) {
+        // Strings and temporal types get quoted and escaped
+        sb.append("\"")
+            .append(val.toString().replace("\\", "\\\\").replace("\"", "\\\""))
+            .append("\"");
       } else {
         // For non-string values, rely on their existing toString()
         sb.append(val);

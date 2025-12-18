@@ -4,6 +4,7 @@ import static com.databricks.jdbc.common.MetadataResultConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import com.databricks.jdbc.api.impl.DatabricksResultSet;
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
@@ -121,7 +122,7 @@ public class MetadataResultSetBuilderTest {
         Arguments.of("VARCHAR", "VARCHAR"),
         Arguments.of("CHAR(255)", "CHAR"),
         Arguments.of("TEXT", "TEXT"),
-        Arguments.of("VARCHAR(", "VARCHAR"),
+        Arguments.of("VARCHAR()", "VARCHAR"),
         Arguments.of("VARCHAR(100,200)", "VARCHAR"),
         Arguments.of("CHAR(123)", "CHAR"),
         Arguments.of("ARRAY<DOUBLE>", "ARRAY<DOUBLE>"),
@@ -131,7 +132,8 @@ public class MetadataResultSetBuilderTest {
         Arguments.of("MAP<STRING,INT>(50)", "MAP<STRING,INT>"),
         Arguments.of(null, null),
         Arguments.of("", ""),
-        Arguments.of("INTEGER(10,5)", "INTEGER"));
+        Arguments.of("INTEGER(10,5)", "INTEGER"),
+        Arguments.of("ARRAY<DECIMAL(10,2)>", "ARRAY<DECIMAL(10,2)>"));
   }
 
   private static Stream<Arguments> stripBaseTypeNameArguments() {
@@ -205,27 +207,18 @@ public class MetadataResultSetBuilderTest {
 
   private static Stream<Arguments> provideSpecialColumnsArguments() {
     return Stream.of(
-        Arguments.of(
-            java.util.Arrays.asList("INTEGER", "", "", 0, ""),
-            Arrays.asList("INTEGER", 4, null, 1, null)),
-        Arguments.of(
-            java.util.Arrays.asList("DATE", "", "", 1, ""),
-            Arrays.asList("DATE", 91, 91, 2, null)));
+        Arguments.of(List.of("INTEGER", "", "", 0, ""), Arrays.asList("INTEGER", 4, null, 1, null)),
+        Arguments.of(List.of("DATE", "", "", 1, ""), Arrays.asList("DATE", 91, 91, 2, null)));
   }
 
   private static Stream<Arguments> provideColumnSizeArguments() {
     return Stream.of(
-        Arguments.of(
-            java.util.Arrays.asList("VARCHAR(50)", 0, 0),
-            java.util.Arrays.asList("VARCHAR", 50, 0)),
-        Arguments.of(
-            java.util.Arrays.asList("INT", 4, 10), java.util.Arrays.asList("INT", 10, 10)));
+        Arguments.of(List.of("VARCHAR(50)", 0, 0), List.of("VARCHAR", 50, 0)),
+        Arguments.of(List.of("INT", 4, 10), List.of("INT", 10, 10)));
   }
 
   private static Stream<Arguments> provideColumnSizeArgumentsVarchar() {
-    return Stream.of(
-        Arguments.of(
-            java.util.Arrays.asList("VARCHAR", 0, 0), java.util.Arrays.asList("VARCHAR", 255, 0)));
+    return Stream.of(Arguments.of(List.of("VARCHAR", 0, 0), List.of("VARCHAR", 255, 0)));
   }
 
   @ParameterizedTest
@@ -265,7 +258,8 @@ public class MetadataResultSetBuilderTest {
         Arguments.of("DECIMAL", "DECIMAL"),
         Arguments.of("DECIMAL(6,2)", "DECIMAL"),
         Arguments.of("MAP<STRING, ARRAY<STRING>>", "MAP<STRING, ARRAY<STRING>>"),
-        Arguments.of("ARRAY<DOUBLE>", "ARRAY<DOUBLE>"));
+        Arguments.of("ARRAY<DOUBLE>", "ARRAY<DOUBLE>"),
+        Arguments.of("BINGINT measure", "BINGINT measure"));
   }
 
   @ParameterizedTest
@@ -309,9 +303,9 @@ public class MetadataResultSetBuilderTest {
 
   @Test
   void testGetThriftRowsWithRowIndexOutOfBounds() {
-    List<ResultColumn> columns = java.util.Arrays.asList(COLUMN_TYPE_COLUMN, COL_NAME_COLUMN);
-    List<Object> row = java.util.Arrays.asList("VARCHAR(50)");
-    List<List<Object>> rows = java.util.Arrays.asList(row);
+    List<ResultColumn> columns = List.of(COLUMN_TYPE_COLUMN, COL_NAME_COLUMN);
+    List<Object> row = List.of("VARCHAR(50)");
+    List<List<Object>> rows = List.of(row);
 
     List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(rows, columns);
     List<Object> updatedRow = updatedRows.get(0);
@@ -319,19 +313,28 @@ public class MetadataResultSetBuilderTest {
     assertNull(updatedRow.get(1));
   }
 
+  @Test
+  void testGetThriftRowsMeasureColumn() {
+    List<ResultColumn> columns = List.of(COLUMN_TYPE_COLUMN);
+    List<Object> row = List.of("DECIMAL(6,2) measure");
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(List.of(row), columns);
+    List<Object> updatedRow = updatedRows.get(0);
+    // verify that type name for measure column is not stripped
+    assertEquals("DECIMAL(6,2) measure", updatedRow.get(0));
+  }
+
   @ParameterizedTest
   @MethodSource("provideSpecialColumnsArguments")
   void testGetThriftRowsSpecialColumns(List<Object> row, List<Object> expectedRow) {
     List<ResultColumn> columns =
-        java.util.Arrays.asList(
+        List.of(
             COLUMN_TYPE_COLUMN,
             SQL_DATA_TYPE_COLUMN,
             SQL_DATETIME_SUB_COLUMN,
             ORDINAL_POSITION_COLUMN,
             SCOPE_CATALOG_COLUMN);
 
-    List<List<Object>> updatedRows =
-        metadataResultSetBuilder.getThriftRows(java.util.Arrays.asList(row), columns);
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(List.of(row), columns);
     List<Object> updatedRow = updatedRows.get(0);
     // verify following
     // 1. ordinal position is 1, 2
@@ -348,10 +351,9 @@ public class MetadataResultSetBuilderTest {
   @MethodSource("provideColumnSizeArguments")
   void testGetThriftRowsColumnSize(List<Object> row, List<Object> expectedRow) {
     List<ResultColumn> columns =
-        java.util.Arrays.asList(COLUMN_TYPE_COLUMN, COLUMN_SIZE_COLUMN, NUM_PREC_RADIX_COLUMN);
+        List.of(COLUMN_TYPE_COLUMN, COLUMN_SIZE_COLUMN, NUM_PREC_RADIX_COLUMN);
 
-    List<List<Object>> updatedRows =
-        metadataResultSetBuilder.getThriftRows(java.util.Arrays.asList(row), columns);
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(List.of(row), columns);
     List<Object> updatedRow = updatedRows.get(0);
 
     assertEquals(expectedRow.get(0), updatedRow.get(0));
@@ -365,10 +367,9 @@ public class MetadataResultSetBuilderTest {
     when(context.getDefaultStringColumnLength()).thenReturn(255);
     MetadataResultSetBuilder metadataResultSetBuilder = new MetadataResultSetBuilder(context);
     List<ResultColumn> columns =
-        java.util.Arrays.asList(COLUMN_TYPE_COLUMN, COLUMN_SIZE_COLUMN, NUM_PREC_RADIX_COLUMN);
+        List.of(COLUMN_TYPE_COLUMN, COLUMN_SIZE_COLUMN, NUM_PREC_RADIX_COLUMN);
 
-    List<List<Object>> updatedRows =
-        metadataResultSetBuilder.getThriftRows(java.util.Arrays.asList(row), columns);
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(List.of(row), columns);
     List<Object> updatedRow = updatedRows.get(0);
 
     assertEquals(expectedRow.get(0), updatedRow.get(0));
@@ -478,5 +479,254 @@ public class MetadataResultSetBuilderTest {
       assertEquals("TABLE", resultSet.getString("TABLE_TYPE"));
     }
     assertEquals(2, rowCount);
+  }
+
+  @Test
+  void testGetTablesResultSortingInSeaMode() throws SQLException {
+    // Create mock DatabricksResultSet with rows in unsorted order
+    DatabricksResultSet mockResultSet = mock(DatabricksResultSet.class, withSettings().lenient());
+    java.sql.ResultSetMetaData mockMetaData = mock(java.sql.ResultSetMetaData.class);
+    when(mockMetaData.getColumnCount()).thenReturn(TABLE_COLUMNS.size());
+    when(mockResultSet.getMetaData()).thenReturn(mockMetaData);
+
+    // Return 4 rows in unsorted order, then false
+    when(mockResultSet.next())
+        .thenReturn(true)
+        .thenReturn(true)
+        .thenReturn(true)
+        .thenReturn(true)
+        .thenReturn(false);
+
+    // Stub all TABLE_COLUMNS to return null by default (some columns aren't in resultset)
+    for (ResultColumn resultColumn : TABLE_COLUMNS) {
+      when(mockResultSet.getObject(resultColumn.getResultSetColumnName())).thenReturn(null);
+    }
+
+    // Set up rows in deliberately unsorted order to verify sorting works
+    // Expected sort order: TABLE_TYPE, TABLE_CAT, TABLE_SCHEM, TABLE_NAME
+    // Row data uses ResultColumn.getResultSetColumnName() values
+    when(mockResultSet.getObject(CATALOG_COLUMN.getResultSetColumnName())) // TABLE_CAT
+        .thenReturn("catalog_b")
+        .thenReturn("catalog_a")
+        .thenReturn("catalog_a")
+        .thenReturn("catalog_a");
+    when(mockResultSet.getObject(SCHEMA_COLUMN.getResultSetColumnName())) // TABLE_SCHEM
+        .thenReturn("schema_z")
+        .thenReturn("schema_a")
+        .thenReturn("schema_b")
+        .thenReturn("schema_a");
+    when(mockResultSet.getObject(TABLE_NAME_COLUMN.getResultSetColumnName())) // TABLE_NAME
+        .thenReturn("table_x")
+        .thenReturn("table_b")
+        .thenReturn("table_a")
+        .thenReturn("table_a");
+    when(mockResultSet.getObject(TABLE_TYPE_COLUMN.getResultSetColumnName())) // TABLE_TYPE
+        .thenReturn("VIEW")
+        .thenReturn("TABLE")
+        .thenReturn("TABLE")
+        .thenReturn("VIEW");
+
+    // Call SEA mode method with both TABLE and VIEW types
+    String[] tableTypes = new String[] {"TABLE", "VIEW"};
+    ResultSet resultSet = metadataResultSetBuilder.getTablesResult(mockResultSet, tableTypes);
+
+    // Verify sorting: TABLE_TYPE first, then TABLE_CAT, TABLE_SCHEM, TABLE_NAME
+    // Expected order after sorting:
+    // 1. TABLE, catalog_a, schema_a, table_b
+    // 2. TABLE, catalog_a, schema_b, table_a
+    // 3. VIEW, catalog_a, schema_a, table_a
+    // 4. VIEW, catalog_b, schema_z, table_x
+
+    assertTrue(resultSet.next());
+    assertEquals("TABLE", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_a", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_a", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_b", resultSet.getString("TABLE_NAME"));
+
+    assertTrue(resultSet.next());
+    assertEquals("TABLE", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_a", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_b", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_a", resultSet.getString("TABLE_NAME"));
+
+    assertTrue(resultSet.next());
+    assertEquals("VIEW", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_a", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_a", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_a", resultSet.getString("TABLE_NAME"));
+
+    assertTrue(resultSet.next());
+    assertEquals("VIEW", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_b", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_z", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_x", resultSet.getString("TABLE_NAME"));
+
+    assertFalse(resultSet.next());
+  }
+
+  @Test
+  void testComplexTypesReturnVarcharWhenSupportDisabled() throws SQLException {
+    when(connectionContext.isComplexDatatypeSupportEnabled()).thenReturn(false);
+
+    List<ResultColumn> columns =
+        Arrays.asList(DATA_TYPE_COLUMN, COLUMN_TYPE_COLUMN, SQL_DATA_TYPE_COLUMN);
+    List<List<Object>> rows =
+        Arrays.asList(
+            Arrays.asList(2003, "ARRAY<DATE>", 2003),
+            Arrays.asList(2002, "MAP<STRING,INT>", 2002),
+            Arrays.asList(2002, "STRUCT<name:STRING,age:INT>", 2002),
+            Arrays.asList(1111, "VARIANT", 1111));
+
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(rows, columns);
+
+    List<Object> arrayRow = updatedRows.get(0);
+    assertEquals(12, arrayRow.get(0));
+    assertEquals(12, arrayRow.get(2));
+
+    List<Object> mapRow = updatedRows.get(1);
+    assertEquals(12, mapRow.get(0));
+    assertEquals(12, mapRow.get(2));
+
+    List<Object> structRow = updatedRows.get(2);
+    assertEquals(12, structRow.get(0));
+    assertEquals(12, structRow.get(2));
+
+    List<Object> variantRow = updatedRows.get(3);
+    assertEquals(1111, variantRow.get(0));
+    assertEquals(1111, variantRow.get(2));
+  }
+
+  @Test
+  void testComplexTypesReturnActualCodesWhenSupportEnabled() throws SQLException {
+    when(connectionContext.isComplexDatatypeSupportEnabled()).thenReturn(true);
+
+    List<ResultColumn> columns =
+        Arrays.asList(DATA_TYPE_COLUMN, COLUMN_TYPE_COLUMN, SQL_DATA_TYPE_COLUMN);
+    List<List<Object>> rows =
+        Arrays.asList(
+            Arrays.asList(2003, "ARRAY<DATE>", 2003),
+            Arrays.asList(2002, "MAP<STRING,INT>", 2002),
+            Arrays.asList(2002, "STRUCT<name:STRING,age:INT>", 2002),
+            Arrays.asList(1111, "VARIANT", 1111));
+
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(rows, columns);
+
+    List<Object> arrayRow = updatedRows.get(0);
+    assertEquals(2003, arrayRow.get(0));
+    assertEquals(2003, arrayRow.get(2));
+
+    List<Object> mapRow = updatedRows.get(1);
+    assertEquals(2002, mapRow.get(0));
+    assertEquals(2002, mapRow.get(2));
+
+    List<Object> structRow = updatedRows.get(2);
+    assertEquals(2002, structRow.get(0));
+    assertEquals(2002, structRow.get(2));
+
+    List<Object> variantRow = updatedRows.get(3);
+    assertEquals(1111, variantRow.get(0));
+    assertEquals(1111, variantRow.get(2));
+  }
+
+  @Test
+  void testDecimalDigitsColumnInGetThriftRows() {
+    List<ResultColumn> columns = Arrays.asList(COLUMN_TYPE_COLUMN, DECIMAL_DIGITS_COLUMN);
+
+    List<List<Object>> rows =
+        Arrays.asList(
+            Arrays.asList("DECIMAL(10,2)", 2),
+            Arrays.asList("TIMESTAMP", 6),
+            Arrays.asList("INT", 0),
+            Arrays.asList("VARCHAR(100)", 0),
+            Arrays.asList("DECIMAL(15,5)", 5),
+            Arrays.asList("TIMESTAMP_NTZ", 6),
+            Arrays.asList("DECIMAL", 0));
+
+    List<List<Object>> updatedRows = metadataResultSetBuilder.getThriftRows(rows, columns);
+
+    assertEquals(2, updatedRows.get(0).get(1), "DECIMAL(10,2) should have scale 2");
+    assertEquals(9, updatedRows.get(1).get(1), "TIMESTAMP should have scale 9");
+    assertEquals(0, updatedRows.get(2).get(1), "INT should have scale 0");
+    assertEquals(0, updatedRows.get(3).get(1), "VARCHAR should have scale 0");
+    assertEquals(5, updatedRows.get(4).get(1), "DECIMAL(15,5) should have scale 5");
+    assertEquals(9, updatedRows.get(5).get(1), "TIMESTAMP_NTZ should have scale 9");
+    assertEquals(0, updatedRows.get(6).get(1), "DECIMAL should have scale 0");
+  }
+
+  private static Stream<Arguments> provideDecimalDigitsArguments() {
+    return Stream.of(
+        Arguments.of("DECIMAL(10,2)", 2, 2, "DECIMAL(10,2) should have scale 2"),
+        Arguments.of("TIMESTAMP", 6, 9, "TIMESTAMP should have scale 9"),
+        Arguments.of("INT", 0, 0, "INT should have scale 0"),
+        Arguments.of("VARCHAR(100)", 0, 0, "VARCHAR should have scale 0"),
+        Arguments.of("DECIMAL(15,5)", 5, 5, "DECIMAL(15,5) should have scale 5"),
+        Arguments.of("TIMESTAMP_NTZ", 6, 9, "TIMESTAMP_NTZ should have scale 9"),
+        Arguments.of("DECIMAL", 0, 0, "DECIMAL should have scale 0"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("provideDecimalDigitsArguments")
+  void testDecimalDigitsColumnInGetRows(
+      String typeName, int inputScale, int expectedScale, String message) throws SQLException {
+    DatabricksResultSet resultSet = mock(DatabricksResultSet.class);
+    when(resultSet.next()).thenReturn(true).thenReturn(false);
+
+    for (ResultColumn resultColumn : COLUMN_COLUMNS) {
+      if (resultColumn.getResultSetColumnName().equals("SQLDataType")) {
+        // Special handling begins from SQLDataType columns onward; getObject is no longer invoked.
+        break;
+      }
+      when(resultSet.getObject(resultColumn.getResultSetColumnName())).thenReturn(null);
+    }
+    when(resultSet.getObject(IS_NULLABLE_COLUMN.getResultSetColumnName())).thenReturn("true");
+    when(resultSet.getString(COLUMN_TYPE_COLUMN.getResultSetColumnName())).thenReturn(typeName);
+    when(resultSet.getObject(DECIMAL_DIGITS_COLUMN.getResultSetColumnName()))
+        .thenReturn(inputScale);
+
+    List<List<Object>> rows =
+        metadataResultSetBuilder.getRows(
+            resultSet, COLUMN_COLUMNS, new DefaultDatabricksResultSetAdapter());
+
+    assertEquals(expectedScale, rows.get(0).get(8), message);
+  }
+
+  @Test
+  void testGetTableTypesResultWithMetricViewEnabled() throws SQLException {
+    // Test when EnableMetricViewMetadata=true
+    when(connectionContext.getEnableMetricViewMetadata()).thenReturn(true);
+
+    DatabricksResultSet resultSet = metadataResultSetBuilder.getTableTypesResult();
+
+    // Verify we get 4 table types including METRIC_VIEW
+    List<String> tableTypes = new ArrayList<>();
+    while (resultSet.next()) {
+      tableTypes.add(resultSet.getString("TABLE_TYPE"));
+    }
+
+    assertEquals(4, tableTypes.size());
+    assertTrue(tableTypes.contains("SYSTEM TABLE"));
+    assertTrue(tableTypes.contains("TABLE"));
+    assertTrue(tableTypes.contains("VIEW"));
+    assertTrue(tableTypes.contains("METRIC_VIEW"));
+  }
+
+  @Test
+  void testGetTableTypesResultWithMetricViewDisabled() throws SQLException {
+    // Test when EnableMetricViewMetadata=false
+    when(connectionContext.getEnableMetricViewMetadata()).thenReturn(false);
+
+    DatabricksResultSet resultSet = metadataResultSetBuilder.getTableTypesResult();
+
+    // Verify we get 3 table types without METRIC_VIEW
+    List<String> tableTypes = new ArrayList<>();
+    while (resultSet.next()) {
+      tableTypes.add(resultSet.getString("TABLE_TYPE"));
+    }
+
+    assertEquals(3, tableTypes.size());
+    assertTrue(tableTypes.contains("SYSTEM TABLE"));
+    assertTrue(tableTypes.contains("TABLE"));
+    assertTrue(tableTypes.contains("VIEW"));
+    assertFalse(tableTypes.contains("METRIC_VIEW"));
   }
 }

@@ -1,9 +1,12 @@
 package com.databricks.jdbc.dbclient.impl.thrift;
 
+import static com.databricks.jdbc.common.EnvironmentVariables.DEFAULT_STATEMENT_TIMEOUT_SECONDS;
 import static com.databricks.jdbc.common.EnvironmentVariables.JDBC_THRIFT_VERSION;
+import static com.databricks.jdbc.common.util.DatabricksAuthUtil.initializeConfigWithToken;
 import static com.databricks.jdbc.common.util.DatabricksThriftUtil.*;
 import static com.databricks.jdbc.common.util.DatabricksTypeUtil.DECIMAL;
 import static com.databricks.jdbc.common.util.DatabricksTypeUtil.getDecimalTypeString;
+import static com.databricks.jdbc.dbclient.impl.sqlexec.CommandName.LIST_FUNCTIONS;
 import static com.databricks.jdbc.dbclient.impl.sqlexec.ResultConstants.TYPE_INFO_RESULT;
 
 import com.databricks.jdbc.api.impl.*;
@@ -19,20 +22,22 @@ import com.databricks.jdbc.dbclient.IDatabricksClient;
 import com.databricks.jdbc.dbclient.IDatabricksMetadataClient;
 import com.databricks.jdbc.dbclient.impl.common.MetadataResultSetBuilder;
 import com.databricks.jdbc.dbclient.impl.common.StatementId;
-import com.databricks.jdbc.exception.DatabricksHttpException;
+import com.databricks.jdbc.dbclient.impl.sqlexec.CommandBuilder;
 import com.databricks.jdbc.exception.DatabricksParsingException;
 import com.databricks.jdbc.exception.DatabricksSQLException;
+import com.databricks.jdbc.exception.DatabricksValidationException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.client.thrift.generated.*;
+import com.databricks.jdbc.model.core.ChunkLinkFetchResult;
 import com.databricks.jdbc.model.core.ExternalLink;
+import com.databricks.jdbc.model.core.ResultData;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
 import com.databricks.sdk.core.DatabricksConfig;
 import com.google.common.annotations.VisibleForTesting;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabricksMetadataClient {
@@ -45,7 +50,7 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
   private final MetadataResultSetBuilder metadataResultSetBuilder;
 
   public DatabricksThriftServiceClient(IDatabricksConnectionContext connectionContext)
-      throws DatabricksParsingException, DatabricksHttpException {
+      throws DatabricksParsingException, DatabricksValidationException {
     this.connectionContext = connectionContext;
     this.thriftAccessor = new DatabricksThriftAccessor(connectionContext);
     this.metadataResultSetBuilder = new MetadataResultSetBuilder(connectionContext);
@@ -64,6 +69,10 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
     this.serverProtocolVersion = serverProtocolVersion;
   }
 
+  private boolean isMultipleCatalogSupportEnabled() {
+    return connectionContext == null || connectionContext.getEnableMultipleCatalogSupport();
+  }
+
   @Override
   public IDatabricksConnectionContext getConnectionContext() {
     return connectionContext;
@@ -71,8 +80,11 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
 
   @Override
   public void resetAccessToken(String newAccessToken) {
-    ((DatabricksHttpTTransport) thriftAccessor.getThriftClient().getInputProtocol().getTransport())
-        .resetAccessToken(newAccessToken);
+    // Update the config stored in the accessor so new transports use the new token
+    DatabricksConfig currentConfig = thriftAccessor.getDatabricksConfig();
+    DatabricksConfig newConfig = initializeConfigWithToken(newAccessToken, currentConfig);
+    newConfig.resolve();
+    thriftAccessor.updateConfig(newConfig);
   }
 
   @Override
@@ -89,7 +101,7 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
     TOpenSessionReq openSessionReq =
         new TOpenSessionReq()
             .setConfiguration(sessionConf)
-            .setCanUseMultipleCatalogs(true)
+            .setCanUseMultipleCatalogs(isMultipleCatalogSupportEnabled())
             .setClient_protocol_i64(JDBC_THRIFT_VERSION.getValue());
     if (catalog != null || schema != null) {
       openSessionReq.setInitialNamespace(getNamespace(catalog, schema));
@@ -144,7 +156,7 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
     LOGGER.debug(
         String.format(
             "public DatabricksResultSet executeStatement(String sql = {%s}, Compute cluster = {%s}, Map<Integer, ImmutableSqlParameter> parameters = {%s}, StatementType statementType = {%s}, IDatabricksSession session)",
-            sql, computeResource.toString(), parameters.toString(), statementType));
+            sql, computeResource, parameters.toString(), statementType));
 
     DatabricksThreadContextHolder.setStatementType(statementType);
 
@@ -200,11 +212,14 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
         parameters.values().stream()
             .map(this::mapToSparkParameterListItem)
             .collect(Collectors.toList());
-
+    int timeout = DEFAULT_STATEMENT_TIMEOUT_SECONDS;
+    if (parentStatement != null && parentStatement.getStatement() != null) {
+      timeout = parentStatement.getStatement().getQueryTimeout();
+    }
     TExecuteStatementReq request =
         new TExecuteStatementReq()
             .setStatement(sql)
-            .setQueryTimeout(parentStatement.getStatement().getQueryTimeout())
+            .setQueryTimeout(timeout)
             .setSessionHandle(Objects.requireNonNull(session.getSessionInfo()).sessionHandle())
             .setCanReadArrowResult(this.connectionContext.shouldEnableArrow())
             .setUseArrowNativeTypes(arrowNativeTypes);
@@ -228,7 +243,7 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
       request.setUseArrowNativeTypes(arrowNativeTypes);
     }
 
-    int maxRows = parentStatement.getMaxRows();
+    int maxRows = (parentStatement == null) ? 0 : parentStatement.getMaxRows();
     if (maxRows > 0) { // set request param only if user has set maxRows.
       // Similar
       // behavior
@@ -286,32 +301,75 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
   }
 
   @Override
-  public Collection<ExternalLink> getResultChunks(StatementId statementId, long chunkIndex)
-      throws DatabricksSQLException {
-    String context =
-        String.format(
-            "public Optional<ExternalLink> getResultChunk(String statementId = {%s}, long chunkIndex = {%s}) using Thrift client",
-            statementId, chunkIndex);
-    LOGGER.debug(context);
-    DatabricksThreadContextHolder.setStatementId(statementId);
-    TFetchResultsResp fetchResultsResp;
-    List<ExternalLink> externalLinks = new ArrayList<>();
-    AtomicInteger index = new AtomicInteger(0);
-    do {
-      fetchResultsResp = thriftAccessor.getResultSetResp(getOperationHandle(statementId), context);
-      fetchResultsResp
-          .getResults()
-          .getResultLinks()
-          .forEach(
-              resultLink ->
-                  externalLinks.add(createExternalLink(resultLink, index.getAndIncrement())));
-    } while (fetchResultsResp.hasMoreRows);
-    if (chunkIndex < 0 || externalLinks.size() <= chunkIndex) {
-      String error = String.format("Out of bounds error for chunkIndex. Context: %s", context);
-      LOGGER.error(error);
-      throw new DatabricksSQLException(error, DatabricksDriverErrorCode.INVALID_STATE);
+  public ChunkLinkFetchResult getResultChunks(
+      StatementId statementId, long chunkIndex, long rowOffset) throws DatabricksSQLException {
+    // Thrift uses rowOffset with FETCH_ABSOLUTE; chunkIndex is used for link metadata
+    LOGGER.debug(
+        "getResultChunks(statementId={}, chunkIndex={}, rowOffset={}) using Thrift client",
+        statementId,
+        chunkIndex,
+        rowOffset);
+
+    TFetchResultsResp fetchResultsResp =
+        thriftAccessor.fetchResultsWithAbsoluteOffset(
+            getOperationHandle(statementId), rowOffset, "getResultChunks");
+
+    boolean hasMoreRows = fetchResultsResp.hasMoreRows;
+    List<TSparkArrowResultLink> resultLinks = fetchResultsResp.getResults().getResultLinks();
+
+    if (resultLinks == null || resultLinks.isEmpty()) {
+      LOGGER.debug(
+          "No result links returned for statement {}, hasMoreRows={}", statementId, hasMoreRows);
+      // For Thrift, hasMoreRows is the source of truth. Even with no links,
+      // if hasMoreRows is true, we should indicate continuation with the same offset.
+      return ChunkLinkFetchResult.of(new ArrayList<>(), hasMoreRows, chunkIndex, rowOffset);
     }
-    return externalLinks;
+
+    List<ExternalLink> chunkLinks = new ArrayList<>();
+    int lastIndex = resultLinks.size() - 1;
+    long nextRowOffset = rowOffset;
+    long nextFetchIndex = chunkIndex;
+
+    for (int linkIndex = 0; linkIndex < resultLinks.size(); linkIndex++) {
+      TSparkArrowResultLink thriftLink = resultLinks.get(linkIndex);
+      long linkChunkIndex = chunkIndex + linkIndex;
+
+      // createExternalLink sets chunkIndex, rowOffset, rowCount, byteCount, expiration,
+      // externalLink
+      ExternalLink externalLink = createExternalLink(thriftLink, linkChunkIndex);
+
+      // Set nextChunkIndex based on position and hasMoreRows
+      if (linkIndex == lastIndex) {
+        if (hasMoreRows) {
+          externalLink.setNextChunkIndex(linkChunkIndex + 1);
+          nextFetchIndex = linkChunkIndex + 1;
+        }
+        nextRowOffset = thriftLink.getStartRowOffset() + thriftLink.getRowCount();
+      } else {
+        externalLink.setNextChunkIndex(linkChunkIndex + 1);
+      }
+
+      chunkLinks.add(externalLink);
+    }
+
+    LOGGER.debug(
+        "Built ChunkLinkFetchResult with {} links for statement {}, hasMore={}, nextFetchIndex={}, nextRowOffset={}",
+        chunkLinks.size(),
+        statementId,
+        hasMoreRows,
+        nextFetchIndex,
+        nextRowOffset);
+
+    return ChunkLinkFetchResult.of(
+        chunkLinks, hasMoreRows, hasMoreRows ? nextFetchIndex : -1, nextRowOffset);
+  }
+
+  @Override
+  public ResultData getResultChunksData(StatementId statementId, long chunkIndex)
+      throws DatabricksSQLException {
+    throw new DatabricksSQLException(
+        "getResultChunksData method is not yet implemented for thrift client",
+        DatabricksDriverErrorCode.INVALID_STATE);
   }
 
   @Override
@@ -326,6 +384,20 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
         String.format("Fetching catalogs using Thrift client. Session {%s}", session.toString());
     LOGGER.debug(context);
     DatabricksThreadContextHolder.setSessionId(session.getSessionId());
+
+    // If multiple catalog support is disabled, return only the current catalog
+    if (!isMultipleCatalogSupportEnabled()) {
+      String currentCatalog = session.getCurrentCatalog();
+      if (currentCatalog == null || currentCatalog.isEmpty()) {
+        currentCatalog = "";
+      }
+      List<List<Object>> singleCatalogRows = new ArrayList<>();
+      List<Object> catalogRow = new ArrayList<>();
+      catalogRow.add(currentCatalog);
+      singleCatalogRows.add(catalogRow);
+      return metadataResultSetBuilder.getCatalogsResult(singleCatalogRows);
+    }
+
     TGetCatalogsReq request =
         new TGetCatalogsReq()
             .setSessionHandle(Objects.requireNonNull(session.getSessionInfo()).sessionHandle());
@@ -436,13 +508,43 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
       String catalog,
       String schemaNamePattern,
       String functionNamePattern)
-      throws DatabricksSQLException {
+      throws SQLException {
     String context =
         String.format(
             "Fetching functions using Thrift client. Session {%s}, catalog {%s}, schemaNamePattern {%s}, functionNamePattern {%s}.",
             session.toString(), catalog, schemaNamePattern, functionNamePattern);
     DatabricksThreadContextHolder.setSessionId(session.getSessionId());
     LOGGER.debug(context);
+    if (connectionContext.enableShowCommandsForGetFunctions()) {
+      // Return empty result set if catalog is null for SQL command path
+      if (catalog == null) {
+        LOGGER.debug("Catalog is null, returning empty result set for listFunctions (SQL path)");
+        return metadataResultSetBuilder.getResultSetWithGivenRowsAndColumns(
+            com.databricks.jdbc.common.MetadataResultConstants.FUNCTION_COLUMNS,
+            new ArrayList<>(),
+            com.databricks.jdbc.dbclient.impl.common.CommandConstants.METADATA_STATEMENT_ID,
+            com.databricks.jdbc.common.CommandName.LIST_FUNCTIONS);
+      }
+      String showFunctionsSqlCommand =
+          new CommandBuilder(catalog, session)
+              .setSchemaPattern(schemaNamePattern)
+              .setFunctionPattern(functionNamePattern)
+              .getSQLString(LIST_FUNCTIONS);
+      LOGGER.debug(
+          "Fetching functions using SQL Command {{}}. Session {{}}",
+          showFunctionsSqlCommand,
+          session.toString());
+      try (DatabricksResultSet rs =
+          executeStatement(
+              showFunctionsSqlCommand,
+              session.getComputeResource(),
+              Collections.emptyMap(),
+              StatementType.METADATA,
+              session,
+              null)) {
+        return metadataResultSetBuilder.getFunctionsResult(rs, catalog);
+      }
+    }
     TGetFunctionsReq request =
         new TGetFunctionsReq()
             .setSessionHandle(Objects.requireNonNull(session.getSessionInfo()).sessionHandle())

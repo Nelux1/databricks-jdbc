@@ -3,6 +3,8 @@ package com.databricks.jdbc.api.impl;
 import static com.databricks.jdbc.TestConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.databricks.jdbc.api.internal.IDatabricksConnectionInternal;
@@ -11,6 +13,7 @@ import com.databricks.jdbc.common.DatabricksJdbcConstants;
 import com.databricks.jdbc.dbclient.IDatabricksMetadataClient;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import java.sql.*;
+import java.util.List;
 import java.util.Properties;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 public class DatabricksDatabaseMetaDataTest {
@@ -430,13 +434,13 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void getDefaultTransactionIsolation_returnsExpectedIsolationLevel() throws Exception {
     int defaultTransactionIsolation = metaData.getDefaultTransactionIsolation();
-    assertEquals(Connection.TRANSACTION_READ_UNCOMMITTED, defaultTransactionIsolation);
+    assertEquals(Connection.TRANSACTION_REPEATABLE_READ, defaultTransactionIsolation);
   }
 
   @Test
   public void supportsTransactions_returnsFalse() throws Exception {
     boolean supportsTransactions = metaData.supportsTransactions();
-    assertFalse(supportsTransactions);
+    assertTrue(supportsTransactions);
   }
 
   @Test
@@ -671,6 +675,22 @@ public class DatabricksDatabaseMetaDataTest {
   }
 
   @Test
+  public void testGetTables_tableNamePatternLowercaseConversion() throws SQLException {
+    ArgumentCaptor<String> patternCaptor = ArgumentCaptor.forClass(String.class);
+
+    metaData.getTables(null, null, "MY\\_TABLE", null);
+    metaData.getTables(null, null, "my\\_table", null);
+
+    verify(metadataClient, times(2))
+        .listTables(any(), any(), any(), patternCaptor.capture(), any());
+    List<String> patterns = patternCaptor.getAllValues();
+
+    // Verify both uppercase and lowercase inputs are converted to the same lowercase pattern
+    assertEquals(
+        patterns.get(0), patterns.get(1), "Both patterns should be converted to lowercase");
+  }
+
+  @Test
   public void testGetColumns() throws SQLException {
     ResultSet resultSet = metaData.getColumns(null, null, null, null);
     assertNotNull(resultSet);
@@ -793,13 +813,13 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void testGetDriverVersion() throws SQLException {
     String result = metaData.getDriverVersion();
-    assertEquals("1.0.9-oss", result);
+    assertEquals("3.0.6", result);
   }
 
   @Test
   public void testGetDriverMajorVersion() {
     int result = metaData.getDriverMajorVersion();
-    assertEquals(1, result);
+    assertEquals(3, result);
   }
 
   @Test
@@ -1440,9 +1460,10 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void testSupportsTransactionIsolationLevel() throws SQLException {
     assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_NONE));
-    assertTrue(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_UNCOMMITTED));
+    assertFalse(
+        metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_UNCOMMITTED));
     assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_COMMITTED));
-    assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ));
+    assertTrue(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ));
     assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_SERIALIZABLE));
   }
 

@@ -33,7 +33,9 @@ public class TGetInfoReq
 
   public @org.apache.thrift.annotation.Nullable TSessionHandle sessionHandle; // required
 
-  /** @see TGetInfoType */
+  /**
+   * @see TGetInfoType
+   */
   public @org.apache.thrift.annotation.Nullable TGetInfoType infoType; // required
 
   /**
@@ -42,7 +44,9 @@ public class TGetInfoReq
    */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     SESSION_HANDLE((short) 1, "sessionHandle"),
-    /** @see TGetInfoType */
+    /**
+     * @see TGetInfoType
+     */
     INFO_TYPE((short) 2, "infoType");
 
     private static final java.util.Map<java.lang.String, _Fields> byName =
@@ -179,13 +183,17 @@ public class TGetInfoReq
     }
   }
 
-  /** @see TGetInfoType */
+  /**
+   * @see TGetInfoType
+   */
   @org.apache.thrift.annotation.Nullable
   public TGetInfoType getInfoType() {
     return this.infoType;
   }
 
-  /** @see TGetInfoType */
+  /**
+   * @see TGetInfoType
+   */
   public TGetInfoReq setInfoType(@org.apache.thrift.annotation.Nullable TGetInfoType infoType) {
     this.infoType = infoType;
     return this;

@@ -1,7 +1,5 @@
 package com.databricks.jdbc.dbclient.impl.thrift;
 
-import static com.databricks.jdbc.common.util.DatabricksAuthUtil.initializeConfigWithToken;
-
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
 import com.databricks.jdbc.common.util.ValidationUtil;
 import com.databricks.jdbc.dbclient.IDatabricksHttpClient;
@@ -30,15 +28,10 @@ public class DatabricksHttpTTransport extends TTransport {
 
   private static final JdbcLogger LOGGER =
       JdbcLoggerFactory.getLogger(DatabricksHttpTTransport.class);
-  private static final Map<String, String> DEFAULT_HEADERS;
-
-  static {
-    java.util.Map<String, String> m = new java.util.HashMap<String, String>();
-    m.put("Content-Type", "application/x-thrift");
-    m.put("Accept", "application/x-thrift");
-    DEFAULT_HEADERS = java.util.Collections.unmodifiableMap(m);
-  }
-
+  private static final Map<String, String> DEFAULT_HEADERS =
+      Map.of(
+          "Content-Type", "application/x-thrift",
+          "Accept", "application/x-thrift");
   private final IDatabricksHttpClient httpClient;
   private final String url;
   private Map<String, String> customHeaders = Collections.emptyMap();
@@ -92,7 +85,9 @@ public class DatabricksHttpTTransport extends TTransport {
 
   @Override
   public void write(byte[] buf, int off, int len) {
-    requestBuffer.write(buf, off, len);
+    synchronized (requestBuffer) {
+      requestBuffer.write(buf, off, len);
+    }
   }
 
   @Override
@@ -120,9 +115,13 @@ public class DatabricksHttpTTransport extends TTransport {
       LOGGER.debug("Thrift tracing header: " + traceHeader);
       request.addHeader(TracingUtil.TRACE_HEADER, traceHeader);
     }
-
+    byte[] requestPayload;
+    synchronized (requestBuffer) {
+      requestPayload = requestBuffer.toByteArray();
+      requestBuffer.reset();
+    }
     // Set the request entity
-    request.setEntity(new ByteArrayEntity(requestBuffer.toByteArray()));
+    request.setEntity(new ByteArrayEntity(requestPayload));
 
     // Execute the request and handle the response
     long httpRequestStartTime = System.currentTimeMillis();
@@ -150,9 +149,6 @@ public class DatabricksHttpTTransport extends TTransport {
       LOGGER.error(e, errorMessage);
       throw new TTransportException(TTransportException.UNKNOWN, errorMessage, e);
     }
-
-    // Reset the request buffer
-    requestBuffer.reset();
   }
 
   @Override
@@ -171,11 +167,6 @@ public class DatabricksHttpTTransport extends TTransport {
     Map<String, String> refreshedHeaders = databricksConfig.authenticate();
     customHeaders =
         refreshedHeaders != null ? new HashMap<>(refreshedHeaders) : Collections.emptyMap();
-  }
-
-  void resetAccessToken(String newAccessToken) {
-    this.databricksConfig = initializeConfigWithToken(newAccessToken, databricksConfig);
-    this.databricksConfig.resolve();
   }
 
   @VisibleForTesting

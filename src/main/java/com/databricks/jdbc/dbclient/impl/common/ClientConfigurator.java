@@ -11,6 +11,7 @@ import com.databricks.jdbc.common.util.DatabricksAuthUtil;
 import com.databricks.jdbc.common.util.DriverUtil;
 import com.databricks.jdbc.exception.DatabricksParsingException;
 import com.databricks.jdbc.exception.DatabricksSSLException;
+import com.databricks.jdbc.exception.DatabricksValidationException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
@@ -23,6 +24,7 @@ import com.databricks.sdk.core.oauth.OAuthM2MServicePrincipalCredentialsProvider
 import com.databricks.sdk.core.oauth.TokenCache;
 import com.databricks.sdk.core.utils.Cloud;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -44,9 +46,10 @@ public class ClientConfigurator {
   private DatabricksConfig databricksConfig;
 
   public ClientConfigurator(IDatabricksConnectionContext connectionContext)
-      throws DatabricksSSLException {
+      throws DatabricksSSLException, DatabricksValidationException {
     this.connectionContext = connectionContext;
     this.databricksConfig = new DatabricksConfig();
+    databricksConfig.setDisableOauthRefreshToken(connectionContext.getDisableOauthRefreshToken());
     CommonsHttpClient.Builder httpClientBuilder = new CommonsHttpClient.Builder();
     httpClientBuilder.withTimeoutSeconds(connectionContext.getSocketTimeout());
     setupProxyConfig(httpClientBuilder);
@@ -92,7 +95,7 @@ public class ClientConfigurator {
     // Normalize inputs to handle null values
     host = (host != null) ? host : EMPTY_STRING;
     clientId = (clientId != null) ? clientId : EMPTY_STRING;
-    scopes = (scopes != null) ? scopes : new java.util.ArrayList<String>();
+    scopes = (scopes != null) ? scopes : List.of();
 
     // Combine all parameters
     String combined = host + URL_DELIMITER + clientId + URL_DELIMITER + String.join(COMMA, scopes);
@@ -110,7 +113,7 @@ public class ClientConfigurator {
    * @param httpClientBuilder The builder to which the SSL configuration should be added.
    */
   void setupConnectionManager(CommonsHttpClient.Builder httpClientBuilder)
-      throws DatabricksSSLException {
+      throws DatabricksSSLException, DatabricksValidationException {
     PoolingHttpClientConnectionManager connManager =
         ConfiguratorUtils.getBaseConnectionManager(connectionContext);
     // Default value is 100 which is consistent with the value in the SDK
@@ -119,7 +122,7 @@ public class ClientConfigurator {
     httpClientBuilder.withConnectionManager(connManager);
   }
 
-  /** Setup proxy settings in the databricks config. */
+  /** Set up proxy settings in the databricks config. */
   public void setupProxyConfig(CommonsHttpClient.Builder httpClientBuilder) {
     ProxyConfig proxyConfig =
         new ProxyConfig().setUseSystemProperties(connectionContext.getUseSystemProxy());
@@ -144,7 +147,7 @@ public class ClientConfigurator {
     return new WorkspaceClient(databricksConfig);
   }
 
-  /** Setup the workspace authentication settings in the databricks config. */
+  /** Set up the workspace authentication settings in the databricks config. */
   public void setupAuthConfig() {
     AuthMech authMech = connectionContext.getAuthMech();
     try {
@@ -163,7 +166,7 @@ public class ClientConfigurator {
     }
   }
 
-  /** Setup the OAuth authentication settings in the databricks config. */
+  /** Set up the OAuth authentication settings in the databricks config. */
   public void setupOAuthConfig() throws DatabricksParsingException {
     switch (this.connectionContext.getAuthFlow()) {
       case TOKEN_PASSTHROUGH:
@@ -185,7 +188,7 @@ public class ClientConfigurator {
     }
   }
 
-  /** Setup the OAuth U2M authentication settings in the databricks config. */
+  /** Set up the OAuth U2M authentication settings in the databricks config. */
   public void setupU2MConfig() throws DatabricksParsingException {
     int redirectPort = findAvailablePort(connectionContext.getOAuth2RedirectUrlPorts());
     String redirectUrl = String.format("http://localhost:%d", redirectPort);
@@ -203,11 +206,7 @@ public class ClientConfigurator {
         .setOAuthRedirectUrl(redirectUrl);
 
     LOGGER.info("Using OAuth redirect URL: {}", redirectUrl);
-
-    if (!databricksConfig.isAzure()) {
-      databricksConfig.setScopes(connectionContext.getOAuthScopesForU2M());
-    }
-
+    databricksConfig.setScopes(connectionContext.getOAuthScopesForU2M());
     TokenCache tokenCache;
     if (connectionContext.isTokenCacheEnabled()) {
       if (connectionContext.getTokenCachePassPhrase() == null) {
@@ -222,8 +221,7 @@ public class ClientConfigurator {
     }
 
     databricksConfig.setCredentialsProvider(
-        new DatabricksTokenFederationProvider(
-            connectionContext, new ExternalBrowserCredentialsProvider(tokenCache)));
+        wrapWithTokenFederationIfEnabled(new ExternalBrowserCredentialsProvider(tokenCache)));
   }
 
   /**
@@ -235,7 +233,7 @@ public class ClientConfigurator {
    * @return The first available port
    * @throws DatabricksException if no available port is found
    */
-  int findAvailablePort(List<Integer> initialPorts) {
+  public int findAvailablePort(List<Integer> initialPorts) {
     List<Integer> portsToTry;
 
     // If single port provided, generate sequence of ports to try
@@ -277,15 +275,16 @@ public class ClientConfigurator {
    * @return true if the port is available, false otherwise
    */
   boolean isPortAvailable(int port) {
-    try (ServerSocket serverSocket = new ServerSocket(port)) {
+    try (ServerSocket serverSocket = new ServerSocket()) {
       serverSocket.setReuseAddress(true);
+      serverSocket.bind(new InetSocketAddress(port));
       return true;
     } catch (IOException e) {
       return false;
     }
   }
 
-  /** Setup the PAT authentication settings in the databricks config. */
+  /** Set up the PAT authentication settings in the databricks config. */
   public void setupAccessTokenConfig() throws DatabricksParsingException {
 
     databricksConfig
@@ -297,9 +296,9 @@ public class ClientConfigurator {
   public void setupOAuthAccessTokenConfig() throws DatabricksParsingException {
     // Token Federation is only supported for JWT tokens
     if (DatabricksAuthUtil.isTokenJWT(connectionContext.getPassThroughAccessToken())) {
-      DatabricksTokenFederationProvider databricksTokenFederationProvider =
-          new DatabricksTokenFederationProvider(connectionContext, new PatCredentialsProvider());
-      databricksConfig.setCredentialsProvider(databricksTokenFederationProvider);
+      CredentialsProvider credentialsProvider =
+          wrapWithTokenFederationIfEnabled(new PatCredentialsProvider());
+      databricksConfig.setCredentialsProvider(credentialsProvider);
     }
 
     databricksConfig
@@ -313,7 +312,7 @@ public class ClientConfigurator {
     this.databricksConfig.resolve();
   }
 
-  /** Setup the OAuth U2M refresh token authentication settings in the databricks config. */
+  /** Set up the OAuth U2M refresh token authentication settings in the databricks config. */
   public void setupU2MRefreshConfig() throws DatabricksParsingException {
     databricksConfig
         .setHost(connectionContext.getHostForOAuth())
@@ -321,15 +320,14 @@ public class ClientConfigurator {
         .setClientSecret(connectionContext.getClientSecret());
     CredentialsProvider provider =
         new OAuthRefreshCredentialsProvider(connectionContext, databricksConfig);
-    CredentialsProvider databricksTokenFederationProvider =
-        new DatabricksTokenFederationProvider(connectionContext, provider);
+    CredentialsProvider wrappedProvider = wrapWithTokenFederationIfEnabled(provider);
 
     databricksConfig
-        .setAuthType(databricksTokenFederationProvider.authType()) // oauth-refresh
-        .setCredentialsProvider(databricksTokenFederationProvider);
+        .setAuthType(wrappedProvider.authType()) // oauth-refresh
+        .setCredentialsProvider(wrappedProvider);
   }
 
-  /** Setup the OAuth M2M authentication settings in the databricks config. */
+  /** Set up the OAuth M2M authentication settings in the databricks config. */
   public void setupM2MConfig() throws DatabricksParsingException {
     if (DriverUtil.isRunningAgainstFake()) {
       databricksConfig.setHost(
@@ -345,13 +343,11 @@ public class ClientConfigurator {
       if (authType.equals(GCP_GOOGLE_CREDENTIALS_AUTH_TYPE)) {
         databricksConfig.setGoogleCredentials(connectionContext.getGoogleCredentials());
         databricksConfig.setCredentialsProvider(
-            new DatabricksTokenFederationProvider(
-                connectionContext, new GoogleCredentialsCredentialsProvider()));
+            wrapWithTokenFederationIfEnabled(new GoogleCredentialsCredentialsProvider()));
       } else {
         databricksConfig.setGoogleServiceAccount(connectionContext.getGoogleServiceAccount());
         databricksConfig.setCredentialsProvider(
-            new DatabricksTokenFederationProvider(
-                connectionContext, new GoogleIdCredentialsProvider()));
+            wrapWithTokenFederationIfEnabled(new GoogleIdCredentialsProvider()));
       }
 
     } else if (connectionContext.getAzureTenantId() != null) {
@@ -368,22 +364,22 @@ public class ClientConfigurator {
           .setAzureClientSecret(connectionContext.getClientSecret())
           .setAzureTenantId(connectionContext.getAzureTenantId())
           .setCredentialsProvider(
-              new DatabricksTokenFederationProvider(
-                  connectionContext, new AzureServicePrincipalCredentialsProvider()));
+              wrapWithTokenFederationIfEnabled(new AzureServicePrincipalCredentialsProvider()));
     } else {
       databricksConfig
-          .setAuthType(DatabricksJdbcConstants.M2M_AUTH_TYPE)
           .setClientId(connectionContext.getClientId())
           .setClientSecret(connectionContext.getClientSecret());
       if (connectionContext.useJWTAssertion()) {
-        databricksConfig.setCredentialsProvider(
-            new DatabricksTokenFederationProvider(
-                connectionContext,
-                new PrivateKeyClientCredentialProvider(connectionContext, databricksConfig)));
+        CredentialsProvider jwtProvider =
+            new PrivateKeyClientCredentialProvider(connectionContext, databricksConfig);
+        databricksConfig
+            .setAuthType(jwtProvider.authType())
+            .setCredentialsProvider(wrapWithTokenFederationIfEnabled(jwtProvider));
       } else {
-        databricksConfig.setCredentialsProvider(
-            new DatabricksTokenFederationProvider(
-                connectionContext, new OAuthM2MServicePrincipalCredentialsProvider()));
+        CredentialsProvider m2mProvider = new OAuthM2MServicePrincipalCredentialsProvider();
+        databricksConfig
+            .setAuthType(DatabricksJdbcConstants.M2M_AUTH_TYPE)
+            .setCredentialsProvider(wrapWithTokenFederationIfEnabled(m2mProvider));
       }
     }
   }
@@ -392,8 +388,7 @@ public class ClientConfigurator {
     databricksConfig.setHost(connectionContext.getHostForOAuth());
     databricksConfig.setAuthType(DatabricksJdbcConstants.AZURE_MSI_AUTH_TYPE);
     databricksConfig.setCredentialsProvider(
-        new DatabricksTokenFederationProvider(
-            connectionContext, new AzureMSICredentialProvider(connectionContext)));
+        wrapWithTokenFederationIfEnabled(new AzureMSICredentialProvider(connectionContext)));
   }
 
   /**
@@ -434,5 +429,19 @@ public class ClientConfigurator {
     if (connectionContext.isOAuthDiscoveryModeEnabled()) {
       databricksConfig.setDiscoveryUrl(connectionContext.getOAuthDiscoveryURL());
     }
+  }
+
+  /**
+   * Conditionally wraps a credentials provider with DatabricksTokenFederationProvider based on the
+   * EnableTokenFederation connection parameter.
+   *
+   * @param provider The credentials provider to potentially wrap
+   * @return The original provider if token federation is disabled, or wrapped provider if enabled
+   */
+  private CredentialsProvider wrapWithTokenFederationIfEnabled(CredentialsProvider provider) {
+    if (connectionContext.isTokenFederationEnabled()) {
+      return new DatabricksTokenFederationProvider(connectionContext, provider);
+    }
+    return provider;
   }
 }

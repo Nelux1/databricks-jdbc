@@ -1,7 +1,5 @@
 package com.databricks.jdbc.api.impl;
 
-import static com.databricks.jdbc.common.util.DatabricksThriftUtil.convertColumnarToRowBased;
-
 import com.databricks.jdbc.api.impl.arrow.ArrowStreamResult;
 import com.databricks.jdbc.api.impl.volume.VolumeOperationResult;
 import com.databricks.jdbc.api.internal.IDatabricksSession;
@@ -59,7 +57,7 @@ class ExecutionResultFactory {
         return new ArrowStreamResult(manifest, data, statementId, session);
       case JSON_ARRAY:
         // This is used for metadata and update commands
-        return new InlineJsonResult(manifest, data);
+        return new InlineJsonResult(manifest, data, statementId, session);
       default:
         String errorMessage = String.format("Invalid response format %s", manifest.getFormat());
         LOGGER.error(errorMessage);
@@ -96,7 +94,7 @@ class ExecutionResultFactory {
     LOGGER.info("Processing result of format {} from Thrift server", resultFormat);
     switch (resultFormat) {
       case COLUMN_BASED_SET:
-        return getResultSet(convertColumnarToRowBased(resultsResp, parentStatement, session));
+        return new LazyThriftResult(resultsResp, parentStatement, session);
       case ARROW_BASED_SET:
         return new ArrowStreamResult(resultsResp, true, parentStatement, session);
       case URL_BASED_SET:

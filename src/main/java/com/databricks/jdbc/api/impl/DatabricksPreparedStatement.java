@@ -37,7 +37,8 @@ public class DatabricksPreparedStatement extends DatabricksStatement implements 
   private final boolean interpolateParameters;
   private final int CHUNK_SIZE = 8192;
 
-  public DatabricksPreparedStatement(DatabricksConnection connection, String sql) {
+  public DatabricksPreparedStatement(DatabricksConnection connection, String sql)
+      throws DatabricksValidationException {
     super(connection);
     this.sql = sql;
     this.interpolateParameters = connection.getConnectionContext().supportManyParameters();
@@ -49,7 +50,8 @@ public class DatabricksPreparedStatement extends DatabricksStatement implements 
       DatabricksConnection connection,
       String sql,
       boolean interpolateParameters,
-      DatabricksParameterMetaData databricksParameterMetaData) {
+      DatabricksParameterMetaData databricksParameterMetaData)
+      throws DatabricksValidationException {
     super(connection);
     this.sql = sql;
     this.interpolateParameters = interpolateParameters;
@@ -88,31 +90,30 @@ public class DatabricksPreparedStatement extends DatabricksStatement implements 
   @Override
   public long[] executeLargeBatch() throws DatabricksBatchUpdateException {
     LOGGER.debug("public long executeLargeBatch()");
-    long[] largeUpdateCount = new long[databricksBatchParameterMetaData.size()];
 
-    for (int sqlQueryIndex = 0;
-        sqlQueryIndex < databricksBatchParameterMetaData.size();
-        sqlQueryIndex++) {
-      DatabricksParameterMetaData databricksParameterMetaData =
-          databricksBatchParameterMetaData.get(sqlQueryIndex);
-      try {
-        executeInternal(
-            sql, databricksParameterMetaData.getParameterBindings(), StatementType.UPDATE, false);
-        largeUpdateCount[sqlQueryIndex] = resultSet.getUpdateCount();
-      } catch (Exception e) {
-        LOGGER.error(
-            "Error executing batch update for index {}: {}", sqlQueryIndex, e.getMessage(), e);
-        // Set the current failed statement's count
-        largeUpdateCount[sqlQueryIndex] = Statement.EXECUTE_FAILED;
-        // Set all remaining statements as failed
-        for (int i = sqlQueryIndex + 1; i < largeUpdateCount.length; i++) {
-          largeUpdateCount[i] = Statement.EXECUTE_FAILED;
-        }
-        throw new DatabricksBatchUpdateException(
-            e.getMessage(), DatabricksDriverErrorCode.BATCH_EXECUTE_EXCEPTION, largeUpdateCount);
-      }
+    if (databricksBatchParameterMetaData.isEmpty()) {
+      return new long[0];
     }
-    return largeUpdateCount;
+
+    // Delegate batch execution to the dedicated batch executor
+    PreparedStatementBatchExecutor batchExecutor =
+        new PreparedStatementBatchExecutor(
+            sql,
+            connection,
+            interpolateParameters,
+            (sqlToExecute, params, statementType, closeStatement) ->
+                executeInternal(sqlToExecute, params, statementType, closeStatement));
+
+    long[] updateCounts = batchExecutor.executeBatch(databricksBatchParameterMetaData);
+
+    // Clear the batch after successful execution per JDBC spec
+    try {
+      clearBatch();
+    } catch (SQLException e) {
+      LOGGER.error("Failed to clear batch after successful execution", e);
+    }
+
+    return updateCounts;
   }
 
   @Override
@@ -440,11 +441,23 @@ public class DatabricksPreparedStatement extends DatabricksStatement implements 
     LOGGER.debug("public void setTimestamp(int parameterIndex, Timestamp x, Calendar cal)");
     checkIfClosed();
     if (cal != null) {
-      TimeZone originalTimeZone = TimeZone.getDefault();
-      TimeZone.setDefault(cal.getTimeZone());
-      x = new Timestamp(x.getTime());
-      TimeZone.setDefault(originalTimeZone);
-      setObject(parameterIndex, x, DatabricksTypeUtil.TIMESTAMP);
+      Calendar defaultCalendar = Calendar.getInstance();
+      defaultCalendar.setTimeInMillis(x.getTime());
+
+      Calendar targetCalendar = (Calendar) cal.clone();
+      targetCalendar.set(Calendar.YEAR, defaultCalendar.get(Calendar.YEAR));
+      targetCalendar.set(Calendar.MONTH, defaultCalendar.get(Calendar.MONTH));
+      targetCalendar.set(Calendar.DAY_OF_MONTH, defaultCalendar.get(Calendar.DAY_OF_MONTH));
+      targetCalendar.set(Calendar.HOUR_OF_DAY, defaultCalendar.get(Calendar.HOUR_OF_DAY));
+      targetCalendar.set(Calendar.MINUTE, defaultCalendar.get(Calendar.MINUTE));
+      targetCalendar.set(Calendar.SECOND, defaultCalendar.get(Calendar.SECOND));
+      targetCalendar.set(
+          Calendar.MILLISECOND, 0); // Because we are already handling sub-second precision below
+
+      Timestamp convertedTimestamp = new Timestamp(targetCalendar.getTimeInMillis());
+      convertedTimestamp.setNanos(
+          x.getNanos()); // Note this preserved the microseconds and nanoseconds both
+      setObject(parameterIndex, convertedTimestamp, DatabricksTypeUtil.TIMESTAMP);
     } else {
       setTimestamp(parameterIndex, x);
     }
@@ -772,7 +785,7 @@ public class DatabricksPreparedStatement extends DatabricksStatement implements 
       if (length != -1) {
         checkLength(length, bytesRead);
       }
-      return buffer.toString(charset.name());
+      return buffer.toString(charset);
     } catch (IOException e) {
       String message = "Error reading from the InputStream";
       LOGGER.error(message);

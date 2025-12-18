@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -79,12 +80,12 @@ class IntervalConverterTest {
     @DisplayName("Negative duration rollover across days")
     void testNegativeAndRollover() {
       // -(49h + 10m + 5s + 123ms)
-      Duration d = Duration.ofHours(-49).plusMinutes(-10).plusSeconds(-5).plusMillis(-123);
-      // JDK8-compatible millisecond truncation
-      long seconds = d.getSeconds();
-      int nanos = d.getNano();
-      int nanosTruncated = (nanos / 1_000_000) * 1_000_000;
-      d = Duration.ofSeconds(seconds, nanosTruncated);
+      Duration d =
+          Duration.ofHours(-49)
+              .plusMinutes(-10)
+              .plusSeconds(-5)
+              .plusMillis(-123)
+              .truncatedTo(ChronoUnit.MILLIS);
       IntervalConverter ic = new IntervalConverter("INTERVAL DAY TO SECOND");
       // |d| = 177005.123s → 2 days + 4205.123s → 2 days, 1h 10m 5.123s
       assertEquals("-2 01:10:05.123000000", ic.toLiteral(d));
@@ -107,6 +108,20 @@ class IntervalConverterTest {
           Duration.ofDays(1000).plusHours(12).plusMinutes(34).plusSeconds(56).plusNanos(789);
       IntervalConverter ic = new IntervalConverter("INTERVAL DAY TO SECOND");
       assertEquals("1000 12:34:56.000000789", ic.toLiteral(d));
+    }
+
+    @Test
+    @DisplayName("LONG_MIN duration handling")
+    void testLongExtremesDuration() {
+      // LONG_MIN is -abs(LONG_MAX) + 1
+      Duration d = Duration.ofNanos(Long.MIN_VALUE);
+      IntervalConverter ic = new IntervalConverter("INTERVAL DAY TO SECOND");
+      assertEquals("-106751 23:47:16.854775807", ic.toLiteral(d));
+
+      // LONG_MAX
+      d = Duration.ofNanos(Long.MAX_VALUE);
+      ic = new IntervalConverter("INTERVAL DAY TO SECOND");
+      assertEquals("106751 23:47:16.854775807", ic.toLiteral(d));
     }
 
     @Test

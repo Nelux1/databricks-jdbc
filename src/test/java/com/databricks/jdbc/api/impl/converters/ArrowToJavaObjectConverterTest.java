@@ -2,15 +2,17 @@ package com.databricks.jdbc.api.impl.converters;
 
 import static com.databricks.jdbc.api.impl.converters.ArrowToJavaObjectConverter.convert;
 import static com.databricks.jdbc.api.impl.converters.ArrowToJavaObjectConverter.getZoneIdFromTimeZoneOpt;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.VARIANT;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.databricks.jdbc.api.impl.DatabricksArray;
+import com.databricks.jdbc.api.impl.DatabricksGeography;
+import com.databricks.jdbc.api.impl.DatabricksGeometry;
 import com.databricks.jdbc.api.impl.DatabricksStruct;
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
 import com.databricks.jdbc.exception.DatabricksValidationException;
-import com.databricks.sdk.service.sql.ColumnInfo;
-import com.databricks.sdk.service.sql.ColumnInfoTypeName;
+import com.databricks.jdbc.model.core.ColumnInfo;
+import com.databricks.jdbc.model.core.ColumnInfoTypeName;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -227,7 +229,7 @@ public class ArrowToJavaObjectConverterTest {
 
   @Test
   public void testTimestampNTZConversion() throws SQLException {
-    long timestamp = 1704054600000000L;
+    long timestamp = 1704054601234567L;
 
     TimeStampMicroVector timestampMicroVector =
         new TimeStampMicroVector("timestampMicroVector", this.bufferAllocator);
@@ -384,7 +386,7 @@ public class ArrowToJavaObjectConverterTest {
 
   @Test
   public void testTimestampConversion() throws SQLException {
-    long timestamp = 1704054600000000L;
+    long timestamp = 1704054601234567L;
     String timeZone = "Asia/Tokyo";
     TimeStampMicroTZVector timeStampMicroTZVector =
         new TimeStampMicroTZVector("timeStampMicroTzVector", this.bufferAllocator, timeZone);
@@ -401,7 +403,9 @@ public class ArrowToJavaObjectConverterTest {
   private static Timestamp getTimestampAdjustedToTimeZone(long timestampMicro, String timeZone) {
     Instant instant = Instant.ofEpochMilli(timestampMicro / 1000);
     LocalDateTime localDateTime = LocalDateTime.ofInstant(instant, ZoneId.of(timeZone));
-    return Timestamp.valueOf(localDateTime);
+    var ts = Timestamp.valueOf(localDateTime);
+    ts.setNanos((int) (timestampMicro % 1000_000) * 1000);
+    return ts;
   }
 
   @Test
@@ -538,5 +542,81 @@ public class ArrowToJavaObjectConverterTest {
     assertThrows(
         DateTimeException.class,
         () -> getZoneIdFromTimeZoneOpt(Optional.of("5:30"))); // Missing sign
+  }
+
+  @Test
+  public void testGeometryConversion() throws SQLException {
+    VarCharVector varCharVector = new VarCharVector("varCharVector", this.bufferAllocator);
+    varCharVector.allocateNew();
+    varCharVector.set(0, new Text("POINT(1 2)"));
+    varCharVector.setValueCount(1);
+
+    Object result =
+        convert(varCharVector, 0, ColumnInfoTypeName.GEOMETRY, GEOMETRY, new ColumnInfo());
+
+    assertNotNull(result);
+    assertInstanceOf(DatabricksGeometry.class, result);
+    DatabricksGeometry geometry = (DatabricksGeometry) result;
+    assertEquals("SRID=0;POINT(1 2)", geometry.toString());
+    assertEquals(0, geometry.getSRID()); // Default SRID
+
+    varCharVector.close();
+  }
+
+  @Test
+  public void testGeographyConversion() throws SQLException {
+    VarCharVector varCharVector = new VarCharVector("varCharVector", this.bufferAllocator);
+    varCharVector.allocateNew();
+    varCharVector.set(0, new Text("POINT(1 2)"));
+    varCharVector.setValueCount(1);
+
+    Object result =
+        convert(varCharVector, 0, ColumnInfoTypeName.GEOGRAPHY, GEOGRAPHY, new ColumnInfo());
+
+    assertNotNull(result);
+    assertInstanceOf(DatabricksGeography.class, result);
+    DatabricksGeography geography = (DatabricksGeography) result;
+    assertEquals("SRID=0;POINT(1 2)", geography.toString());
+    assertEquals(0, geography.getSRID()); // Default SRID
+
+    varCharVector.close();
+  }
+
+  @Test
+  public void testGeometryWithSRIDConversion() throws SQLException {
+    VarCharVector varCharVector = new VarCharVector("varCharVector", this.bufferAllocator);
+    varCharVector.allocateNew();
+    varCharVector.set(0, new Text("SRID=4326;POINT(1 2)"));
+    varCharVector.setValueCount(1);
+
+    Object result =
+        convert(varCharVector, 0, ColumnInfoTypeName.GEOMETRY, "GEOMETRY", new ColumnInfo());
+
+    assertNotNull(result);
+    assertInstanceOf(DatabricksGeometry.class, result);
+    DatabricksGeometry geometry = (DatabricksGeometry) result;
+    assertEquals("SRID=4326;POINT(1 2)", geometry.toString());
+    assertEquals(4326, geometry.getSRID());
+
+    varCharVector.close();
+  }
+
+  @Test
+  public void testGeographyWithSRIDConversion() throws SQLException {
+    VarCharVector varCharVector = new VarCharVector("varCharVector", this.bufferAllocator);
+    varCharVector.allocateNew();
+    varCharVector.set(0, new Text("SRID=4326;POINT(1 2)"));
+    varCharVector.setValueCount(1);
+
+    Object result =
+        convert(varCharVector, 0, ColumnInfoTypeName.GEOGRAPHY, "GEOGRAPHY", new ColumnInfo());
+
+    assertNotNull(result);
+    assertInstanceOf(DatabricksGeography.class, result);
+    DatabricksGeography geography = (DatabricksGeography) result;
+    assertEquals("SRID=4326;POINT(1 2)", geography.toString());
+    assertEquals(4326, geography.getSRID());
+
+    varCharVector.close();
   }
 }

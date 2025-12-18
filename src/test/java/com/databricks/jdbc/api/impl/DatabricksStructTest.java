@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.databricks.jdbc.exception.DatabricksDriverException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Time;
@@ -653,7 +655,39 @@ public class DatabricksStructTest {
     metadataParserMock.verify(() -> MetadataParser.parseStructMetadata(metadata), times(1));
   }
 
-  /**
+  /** Test the constructor with null values in attributes with complex field types. */
+  @Test
+  public void constructor_ShouldHandleNullValuesInComplexAttributes() throws SQLException {
+    String metadata = "STRUCT<id:INT,map:STRUCT<value:STRING>,array:ARRAY<STRING>>";
+    Map<String, Object> attributes = new HashMap<>();
+    attributes.put("id", null);
+    attributes.put("map", null);
+    attributes.put("array", null);
+
+    // Mock MetadataParser.parseStructMetadata to return a map of field types
+    Map<String, String> typeMap = new LinkedHashMap<>();
+    typeMap.put("id", "INT");
+    typeMap.put("map", "STRUCT<value:STRING>");
+    typeMap.put("array", "ARRAY<STRING>");
+    mockParseStructMetadata(metadata, typeMap);
+
+    DatabricksStruct databricksStruct = new DatabricksStruct(attributes, metadata);
+
+    // Retrieve attributes
+    Object[] convertedAttributes = databricksStruct.getAttributes();
+
+    // Assertions
+    assertNotNull(convertedAttributes, "Converted attributes should not be null");
+    assertEquals(3, convertedAttributes.length, "Struct should have three attributes");
+    assertNull(convertedAttributes[0], "Attribute 'id' should be null");
+    assertNull(convertedAttributes[1], "Attribute 'map' should be null");
+    assertNull(convertedAttributes[2], "Attribute 'array' should be null");
+
+    // Verify that parseStructMetadata was called once with the correct metadata
+    metadataParserMock.verify(() -> MetadataParser.parseStructMetadata(metadata), times(1));
+  }
+
+  /*
    * Test the constructor with conversion failure in nested Struct. Expects
    * DatabricksDriverException.
    */
@@ -777,5 +811,201 @@ public class DatabricksStructTest {
         expected,
         actual,
         "Struct toString() must produce JSON-like output with int unquoted, array of quoted strings, and map with string keys/ int values");
+  }
+
+  /**
+   * Test VARIANT fields with JsonNode objects to verify double-escaping fix. This test ensures that
+   * VARIANT fields containing JsonNode objects are serialized correctly without double-escaping,
+   * while preserving JSON structure.
+   */
+  @Test
+  public void constructor_ShouldHandleVariantFieldsCorrectly() throws Exception {
+    // Arrange
+    String structMetadata =
+        "STRUCT<id:INT,simple_str:STRING,variant_obj:VARIANT,variant_arr:VARIANT,variant_null:VARIANT,variant_primitive:VARIANT>";
+
+    Map<String, String> typeMap = new LinkedHashMap<>();
+    typeMap.put("id", "INT");
+    typeMap.put("simple_str", "STRING");
+    typeMap.put("variant_obj", "VARIANT");
+    typeMap.put("variant_arr", "VARIANT");
+    typeMap.put("variant_null", "VARIANT");
+    typeMap.put("variant_primitive", "VARIANT");
+    mockParseStructMetadata(structMetadata, typeMap);
+
+    // Create JsonNode objects representing VARIANT data (as would come from ComplexDataTypeParser)
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode variantObj = mapper.readTree("{\"nested\":{\"key\":\"value\",\"number\":42}}");
+    JsonNode variantArr = mapper.readTree("[{\"item\":\"first\"},{\"item\":\"second\"}]");
+    JsonNode variantNull = mapper.readTree("null");
+    JsonNode variantPrimitive = mapper.readTree("\"simple_string\"");
+
+    Map<String, Object> attributes = new LinkedHashMap<>();
+    attributes.put("id", 123);
+    attributes.put("simple_str", "regular_string");
+    attributes.put("variant_obj", variantObj); // JsonNode object
+    attributes.put("variant_arr", variantArr); // JsonNode array
+    attributes.put("variant_null", variantNull); // JsonNode null
+    attributes.put("variant_primitive", variantPrimitive); // JsonNode primitive
+
+    // Act
+    DatabricksStruct databricksStruct = new DatabricksStruct(attributes, structMetadata);
+    String actual = databricksStruct.toString();
+
+    // Verify that regular fields are correctly formatted
+    assertTrue(actual.contains("\"id\":123"), "ID field should be unquoted integer");
+    assertTrue(
+        actual.contains("\"simple_str\":\"regular_string\""), "String field should be quoted");
+
+    // Verify that VARIANT fields preserve JSON structure without double-escaping
+    assertTrue(
+        actual.contains("\"variant_obj\":{\"nested\":{\"key\":\"value\",\"number\":42}}"),
+        "VARIANT object should preserve JSON structure without double-escaping");
+    assertTrue(
+        actual.contains("\"variant_arr\":[{\"item\":\"first\"},{\"item\":\"second\"}]"),
+        "VARIANT array should preserve JSON structure without double-escaping");
+    assertTrue(
+        actual.contains("\"variant_null\":null"), "VARIANT null should be serialized as null");
+    assertTrue(
+        actual.contains("\"variant_primitive\":\"simple_string\""),
+        "VARIANT primitive should preserve quotes for string values");
+
+    // Verify NO double-escaping patterns exist
+    assertFalse(actual.contains("\\\"{"), "Should not contain double-escaped opening braces");
+    assertFalse(actual.contains("}\\\""), "Should not contain double-escaped closing braces");
+    assertFalse(actual.contains("\\\"["), "Should not contain double-escaped opening brackets");
+    assertFalse(actual.contains("]\\\""), "Should not contain double-escaped closing brackets");
+
+    // Verify the complete expected structure
+    String expectedStructure =
+        "{\"id\":123,"
+            + "\"simple_str\":\"regular_string\","
+            + "\"variant_obj\":{\"nested\":{\"key\":\"value\",\"number\":42}},"
+            + "\"variant_arr\":[{\"item\":\"first\"},{\"item\":\"second\"}],"
+            + "\"variant_null\":null,"
+            + "\"variant_primitive\":\"simple_string\"}";
+
+    assertEquals(
+        expectedStructure,
+        actual,
+        "Complete struct should match expected format with properly serialized VARIANT fields");
+  }
+
+  /**
+   * Test VARIANT field conversion in convertSimpleValue to ensure JsonNode objects are preserved.
+   */
+  @Test
+  public void convertSimpleValue_ShouldPreserveJsonNodeForVariant() throws Exception {
+    // Arrange
+    String structMetadata = "STRUCT<variant_field:VARIANT>";
+    Map<String, String> typeMap = new LinkedHashMap<>();
+    typeMap.put("variant_field", "VARIANT");
+    mockParseStructMetadata(structMetadata, typeMap);
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode jsonNode = mapper.readTree("{\"test\":\"data\"}");
+
+    Map<String, Object> attributes = new LinkedHashMap<>();
+    attributes.put("variant_field", jsonNode);
+
+    // Act
+    DatabricksStruct databricksStruct = new DatabricksStruct(attributes, structMetadata);
+    Object[] convertedAttributes = databricksStruct.getAttributes();
+
+    // Assert
+    assertEquals(1, convertedAttributes.length, "Should have one attribute");
+    assertInstanceOf(
+        JsonNode.class,
+        convertedAttributes[0],
+        "VARIANT field should preserve JsonNode object in attributes array");
+
+    JsonNode preservedNode = (JsonNode) convertedAttributes[0];
+    assertEquals(
+        "{\"test\":\"data\"}",
+        preservedNode.toString(),
+        "JsonNode content should be preserved exactly");
+  }
+
+  @Test
+  public void testToStringWithTimestamp() throws SQLException {
+    // Test that timestamps in structs are properly quoted
+    java.sql.Timestamp timestamp = java.sql.Timestamp.valueOf("2024-01-01 12:30:45.123");
+    String metadata = "STRUCT<id:INT,created_at:TIMESTAMP>";
+
+    Map<String, Object> fieldTypesMap = new LinkedHashMap<>();
+    fieldTypesMap.put("id", "INT");
+    fieldTypesMap.put("created_at", "TIMESTAMP");
+
+    metadataParserMock
+        .when(() -> MetadataParser.parseStructMetadata(metadata))
+        .thenReturn(fieldTypesMap);
+
+    Map<String, Object> inputMap = new LinkedHashMap<>();
+    inputMap.put("id", 123);
+    inputMap.put("created_at", timestamp);
+
+    DatabricksStruct struct = new DatabricksStruct(inputMap, metadata);
+    String actual = struct.toString();
+
+    String expected = "{\"id\":123,\"created_at\":\"2024-01-01 12:30:45.123\"}";
+    assertEquals(expected, actual, "DatabricksStruct.toString() should quote timestamp fields");
+  }
+
+  @Test
+  public void testToStringWithDate() throws SQLException {
+    // Test that dates in structs are properly quoted
+    java.sql.Date date = java.sql.Date.valueOf("2024-01-01");
+    String metadata = "STRUCT<id:INT,event_date:DATE>";
+
+    Map<String, Object> fieldTypesMap = new LinkedHashMap<>();
+    fieldTypesMap.put("id", "INT");
+    fieldTypesMap.put("event_date", "DATE");
+
+    metadataParserMock
+        .when(() -> MetadataParser.parseStructMetadata(metadata))
+        .thenReturn(fieldTypesMap);
+
+    Map<String, Object> inputMap = new LinkedHashMap<>();
+    inputMap.put("id", 456);
+    inputMap.put("event_date", date);
+
+    DatabricksStruct struct = new DatabricksStruct(inputMap, metadata);
+    String actual = struct.toString();
+
+    String expected = "{\"id\":456,\"event_date\":\"2024-01-01\"}";
+    assertEquals(expected, actual, "DatabricksStruct.toString() should quote date fields");
+  }
+
+  @Test
+  public void testToStringProducesValidJsonWithSpecialCharacters() throws SQLException {
+    // Test that toString() produces VALID JSON when strings contain special characters
+    String metadata = "STRUCT<id:INT,message:STRING,path:STRING>";
+
+    Map<String, Object> fieldTypesMap = new LinkedHashMap<>();
+    fieldTypesMap.put("id", "INT");
+    fieldTypesMap.put("message", "STRING");
+    fieldTypesMap.put("path", "STRING");
+
+    metadataParserMock
+        .when(() -> MetadataParser.parseStructMetadata(metadata))
+        .thenReturn(fieldTypesMap);
+
+    Map<String, Object> inputMap = new LinkedHashMap<>();
+    inputMap.put("id", 1);
+    inputMap.put("message", "She said \"hello\"");
+    inputMap.put("path", "C:\\Users\\file.txt");
+
+    DatabricksStruct struct = new DatabricksStruct(inputMap, metadata);
+    String actual = struct.toString();
+
+    System.out.println("Generated JSON: " + actual);
+
+    try {
+      new ObjectMapper().readTree(actual);
+      // Success! The JSON is valid
+      System.out.println("JSON parsing succeeded - output is valid JSON");
+    } catch (Exception e) {
+      fail("JSON parsing failed. JSON was invalid: " + actual + "\nError: " + e.getMessage());
+    }
   }
 }

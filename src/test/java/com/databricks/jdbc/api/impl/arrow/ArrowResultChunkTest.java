@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.databricks.jdbc.exception.DatabricksParsingException;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.model.client.thrift.generated.TSparkArrowResultLink;
+import com.databricks.jdbc.model.core.ColumnInfo;
+import com.databricks.jdbc.model.core.ColumnInfoTypeName;
 import com.databricks.sdk.service.sql.BaseChunkInfo;
-import com.databricks.sdk.service.sql.ColumnInfo;
-import com.databricks.sdk.service.sql.ColumnInfoTypeName;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -197,10 +197,7 @@ public class ArrowResultChunkTest {
       dummyVector.set(i, i * 10);
     }
     arrowResultChunk.recordBatchList =
-        java.util.Arrays.asList(
-            java.util.Arrays.asList(dummyVector),
-            java.util.Arrays.asList(dummyVector),
-            new ArrayList<>());
+        List.of(List.of(dummyVector), List.of(dummyVector), new ArrayList<>());
     ArrowResultChunkIterator iterator = arrowResultChunk.getChunkIterator();
     ColumnInfo intColumnInfo = new ColumnInfo();
     assertTrue(iterator.hasNextRow());
@@ -243,10 +240,7 @@ public class ArrowResultChunkTest {
     emptyVector.allocateNew(0);
     emptyVector.setValueCount(0);
     arrowResultChunk.recordBatchList =
-        java.util.Arrays.asList(
-            java.util.Arrays.asList(dummyVector),
-            java.util.Arrays.asList(emptyVector),
-            java.util.Arrays.asList(dummyVector));
+        List.of(List.of(dummyVector), List.of(emptyVector), List.of(dummyVector));
     ColumnInfo intColumnInfo = new ColumnInfo();
     ArrowResultChunkIterator iterator = arrowResultChunk.getChunkIterator();
     assertTrue(iterator.hasNextRow());

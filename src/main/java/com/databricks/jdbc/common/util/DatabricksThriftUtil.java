@@ -4,6 +4,7 @@ import static com.databricks.jdbc.common.EnvironmentVariables.DEFAULT_RESULT_ROW
 import static com.databricks.jdbc.common.util.DatabricksTypeUtil.*;
 import static com.databricks.jdbc.model.client.thrift.generated.TTypeId.*;
 
+import com.databricks.jdbc.api.impl.ColumnarRowView;
 import com.databricks.jdbc.api.internal.IDatabricksSession;
 import com.databricks.jdbc.api.internal.IDatabricksStatementInternal;
 import com.databricks.jdbc.common.DatabricksJdbcConstants;
@@ -13,48 +14,44 @@ import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.client.thrift.generated.*;
+import com.databricks.jdbc.model.core.ColumnInfo;
+import com.databricks.jdbc.model.core.ColumnInfoTypeName;
 import com.databricks.jdbc.model.core.ExternalLink;
 import com.databricks.jdbc.model.core.StatementStatus;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
-import com.databricks.sdk.service.sql.ColumnInfo;
-import com.databricks.sdk.service.sql.ColumnInfoTypeName;
 import com.databricks.sdk.service.sql.StatementState;
 import java.nio.ByteBuffer;
+import java.time.Instant;
 import java.util.*;
 
 public class DatabricksThriftUtil {
 
-  private static final Map<TTypeId, ColumnInfoTypeName> T_TYPE_ID_COLUMN_INFO_TYPE_NAME_MAP;
-
-  static {
-    Map<TTypeId, ColumnInfoTypeName> m =
-        new java.util.EnumMap<TTypeId, ColumnInfoTypeName>(TTypeId.class);
-    m.put(BOOLEAN_TYPE, ColumnInfoTypeName.BOOLEAN);
-    m.put(TINYINT_TYPE, ColumnInfoTypeName.BYTE);
-    m.put(SMALLINT_TYPE, ColumnInfoTypeName.SHORT);
-    m.put(INT_TYPE, ColumnInfoTypeName.INT);
-    m.put(BIGINT_TYPE, ColumnInfoTypeName.LONG);
-    m.put(FLOAT_TYPE, ColumnInfoTypeName.FLOAT);
-    m.put(DOUBLE_TYPE, ColumnInfoTypeName.DOUBLE);
-    m.put(STRING_TYPE, ColumnInfoTypeName.STRING);
-    m.put(VARCHAR_TYPE, ColumnInfoTypeName.STRING);
-    m.put(TIMESTAMP_TYPE, ColumnInfoTypeName.TIMESTAMP);
-    m.put(BINARY_TYPE, ColumnInfoTypeName.BINARY);
-    m.put(DECIMAL_TYPE, ColumnInfoTypeName.DECIMAL);
-    m.put(DATE_TYPE, ColumnInfoTypeName.DATE);
-    m.put(CHAR_TYPE, ColumnInfoTypeName.CHAR);
-    m.put(INTERVAL_YEAR_MONTH_TYPE, ColumnInfoTypeName.INTERVAL);
-    m.put(INTERVAL_DAY_TIME_TYPE, ColumnInfoTypeName.INTERVAL);
-    m.put(ARRAY_TYPE, ColumnInfoTypeName.ARRAY);
-    m.put(MAP_TYPE, ColumnInfoTypeName.MAP);
-    m.put(NULL_TYPE, ColumnInfoTypeName.STRING);
-    m.put(STRUCT_TYPE, ColumnInfoTypeName.STRUCT);
-    T_TYPE_ID_COLUMN_INFO_TYPE_NAME_MAP = java.util.Collections.unmodifiableMap(m);
-  }
+  private static final Map<TTypeId, ColumnInfoTypeName> T_TYPE_ID_COLUMN_INFO_TYPE_NAME_MAP =
+      Map.ofEntries(
+          Map.entry(BOOLEAN_TYPE, ColumnInfoTypeName.BOOLEAN),
+          Map.entry(TINYINT_TYPE, ColumnInfoTypeName.BYTE),
+          Map.entry(SMALLINT_TYPE, ColumnInfoTypeName.SHORT),
+          Map.entry(INT_TYPE, ColumnInfoTypeName.INT),
+          Map.entry(BIGINT_TYPE, ColumnInfoTypeName.LONG),
+          Map.entry(FLOAT_TYPE, ColumnInfoTypeName.FLOAT),
+          Map.entry(DOUBLE_TYPE, ColumnInfoTypeName.DOUBLE),
+          Map.entry(STRING_TYPE, ColumnInfoTypeName.STRING),
+          Map.entry(VARCHAR_TYPE, ColumnInfoTypeName.STRING),
+          Map.entry(TIMESTAMP_TYPE, ColumnInfoTypeName.TIMESTAMP),
+          Map.entry(BINARY_TYPE, ColumnInfoTypeName.BINARY),
+          Map.entry(DECIMAL_TYPE, ColumnInfoTypeName.DECIMAL),
+          Map.entry(DATE_TYPE, ColumnInfoTypeName.DATE),
+          Map.entry(CHAR_TYPE, ColumnInfoTypeName.CHAR),
+          Map.entry(INTERVAL_YEAR_MONTH_TYPE, ColumnInfoTypeName.INTERVAL),
+          Map.entry(INTERVAL_DAY_TIME_TYPE, ColumnInfoTypeName.INTERVAL),
+          Map.entry(ARRAY_TYPE, ColumnInfoTypeName.ARRAY),
+          Map.entry(MAP_TYPE, ColumnInfoTypeName.MAP),
+          Map.entry(NULL_TYPE, ColumnInfoTypeName.STRING),
+          Map.entry(STRUCT_TYPE, ColumnInfoTypeName.STRUCT));
 
   private static final JdbcLogger LOGGER = JdbcLoggerFactory.getLogger(DatabricksThriftUtil.class);
   private static final List<TStatusCode> SUCCESS_STATUS_LIST =
-      java.util.Arrays.asList(TStatusCode.SUCCESS_STATUS, TStatusCode.SUCCESS_WITH_INFO_STATUS);
+      List.of(TStatusCode.SUCCESS_STATUS, TStatusCode.SUCCESS_WITH_INFO_STATUS);
 
   public static TNamespace getNamespace(String catalog, String schema) {
     return new TNamespace().setCatalogName(catalog).setSchemaName(schema);
@@ -77,7 +74,10 @@ public class DatabricksThriftUtil {
     return new ExternalLink()
         .setExternalLink(chunkInfo.getFileLink())
         .setChunkIndex(chunkIndex)
-        .setExpiration(Long.toString(chunkInfo.getExpiryTime()));
+        .setExpiration(Instant.ofEpochMilli(chunkInfo.getExpiryTime()).toString())
+        .setRowOffset(chunkInfo.getStartRowOffset())
+        .setByteCount(chunkInfo.getBytesNum())
+        .setRowCount(chunkInfo.getRowCount());
   }
 
   public static void verifySuccessStatus(TStatus status, String errorContext)
@@ -128,6 +128,17 @@ public class DatabricksThriftUtil {
       rows.add(row);
     }
     return rows;
+  }
+
+  /**
+   * Memory-efficient alternative that creates a columnar view instead of materializing all rows.
+   * Use this method to significantly reduce memory allocations when accessing row data.
+   *
+   * @param rowSet that contains columnar data
+   * @return a columnar view that provides row-based access without full materialization
+   */
+  public static ColumnarRowView createColumnarView(TRowSet rowSet) throws DatabricksSQLException {
+    return new ColumnarRowView(rowSet);
   }
 
   /** Returns statement status for given operation status response */
@@ -309,7 +320,7 @@ public class DatabricksThriftUtil {
   public static TOperationHandle getOperationHandle(StatementId statementId) {
     THandleIdentifier identifier = statementId.toOperationIdentifier();
     // This will help logging the statement-Id in readable format for debugging purposes
-    LOGGER.debug("getOperationHandle for statementId {%s}", byteBufferToString(identifier.guid));
+    LOGGER.debug("getOperationHandle for statementId {}", byteBufferToString(identifier.guid));
     return new TOperationHandle()
         .setOperationId(identifier)
         .setOperationType(TOperationType.UNKNOWN);
@@ -339,26 +350,25 @@ public class DatabricksThriftUtil {
       throws DatabricksHttpException {
     if (directResults.isSetOperationStatus()) {
       LOGGER.debug(
-          "direct result operation status being verified for success response for statementId {%s}",
+          "direct result operation status being verified for success response for statementId {}",
           statementId);
       verifySuccessStatus(directResults.getOperationStatus().getStatus(), context, statementId);
     }
     if (directResults.isSetResultSetMetadata()) {
       LOGGER.debug(
-          "direct results metadata being verified for success response for statementId {%s}",
+          "direct results metadata being verified for success response for statementId {}",
           statementId);
       verifySuccessStatus(directResults.getResultSetMetadata().getStatus(), context, statementId);
     }
     if (directResults.isSetCloseOperation()) {
       LOGGER.debug(
-          "direct results close operation verified for success response for statementId {%s}",
+          "direct results close operation verified for success response for statementId {}",
           statementId);
       verifySuccessStatus(directResults.getCloseOperation().getStatus(), context, statementId);
     }
     if (directResults.isSetResultSet()) {
       LOGGER.debug(
-          "direct result set being verified for success response for statementId {%s}",
-          statementId);
+          "direct result set being verified for success response for statementId {}", statementId);
       verifySuccessStatus(directResults.getResultSet().getStatus(), context, statementId);
     }
   }

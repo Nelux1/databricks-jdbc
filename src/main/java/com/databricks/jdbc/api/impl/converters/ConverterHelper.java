@@ -1,5 +1,10 @@
 package com.databricks.jdbc.api.impl.converters;
 
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.GEOGRAPHY;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.GEOMETRY;
+
+import com.databricks.jdbc.api.impl.DatabricksGeography;
+import com.databricks.jdbc.api.impl.DatabricksGeometry;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -12,12 +17,13 @@ public class ConverterHelper {
 
   private static final Map<Integer, ObjectConverter> CONVERTER_CACHE = new HashMap<>();
   private static final Map<Integer, List<Integer>> SUPPORTED_CONVERSIONS = new HashMap<>();
+  private static final GeospatialConverter GEOSPATIAL_CONVERTER = new GeospatialConverter();
 
   static {
     // Numeric Types
     SUPPORTED_CONVERSIONS.put(
         Types.TINYINT,
-        java.util.Arrays.asList(
+        List.of(
             Types.TINYINT,
             Types.SMALLINT,
             Types.INTEGER,
@@ -36,7 +42,7 @@ public class ConverterHelper {
             Types.LONGVARCHAR));
     SUPPORTED_CONVERSIONS.put(
         Types.SMALLINT,
-        java.util.Arrays.asList(
+        List.of(
             Types.SMALLINT,
             Types.INTEGER,
             Types.BIGINT,
@@ -58,7 +64,7 @@ public class ConverterHelper {
             Types.LONGVARCHAR));
     SUPPORTED_CONVERSIONS.put(
         Types.INTEGER,
-        java.util.Arrays.asList(
+        List.of(
             Types.INTEGER,
             Types.BIGINT,
             Types.DECIMAL,
@@ -77,7 +83,7 @@ public class ConverterHelper {
             Types.NUMERIC));
     SUPPORTED_CONVERSIONS.put(
         Types.BIGINT,
-        java.util.Arrays.asList(
+        List.of(
             Types.BIGINT,
             Types.DECIMAL,
             Types.DOUBLE,
@@ -96,7 +102,7 @@ public class ConverterHelper {
             Types.BIT));
     SUPPORTED_CONVERSIONS.put(
         Types.FLOAT,
-        java.util.Arrays.asList(
+        List.of(
             Types.DOUBLE,
             Types.DECIMAL,
             Types.REAL,
@@ -115,7 +121,7 @@ public class ConverterHelper {
             Types.BIGINT));
     SUPPORTED_CONVERSIONS.put(
         Types.REAL,
-        java.util.Arrays.asList(
+        List.of(
             Types.REAL,
             Types.DOUBLE,
             Types.DECIMAL,
@@ -134,7 +140,7 @@ public class ConverterHelper {
             Types.FLOAT));
     SUPPORTED_CONVERSIONS.put(
         Types.DOUBLE,
-        java.util.Arrays.asList(
+        List.of(
             Types.DOUBLE,
             Types.DECIMAL,
             Types.REAL,
@@ -153,7 +159,7 @@ public class ConverterHelper {
             Types.BIGINT));
     SUPPORTED_CONVERSIONS.put(
         Types.DECIMAL,
-        java.util.Arrays.asList(
+        List.of(
             Types.DECIMAL,
             Types.NUMERIC,
             Types.DOUBLE,
@@ -168,7 +174,7 @@ public class ConverterHelper {
             Types.FLOAT));
     SUPPORTED_CONVERSIONS.put(
         Types.NUMERIC,
-        java.util.Arrays.asList(
+        List.of(
             Types.NUMERIC,
             Types.DECIMAL,
             Types.DOUBLE,
@@ -185,7 +191,7 @@ public class ConverterHelper {
     // Boolean/Bit Types
     SUPPORTED_CONVERSIONS.put(
         Types.BOOLEAN,
-        java.util.Arrays.asList(
+        List.of(
             Types.BOOLEAN,
             Types.BIT,
             Types.INTEGER,
@@ -207,7 +213,7 @@ public class ConverterHelper {
             Types.LONGVARBINARY));
     SUPPORTED_CONVERSIONS.put(
         Types.BIT,
-        java.util.Arrays.asList(
+        List.of(
             Types.BIT,
             Types.INTEGER,
             Types.VARCHAR,
@@ -229,7 +235,7 @@ public class ConverterHelper {
     // Date/Time TypesT
     SUPPORTED_CONVERSIONS.put(
         Types.DATE,
-        java.util.Arrays.asList(
+        List.of(
             Types.DATE,
             Types.TIMESTAMP,
             Types.VARCHAR,
@@ -240,7 +246,7 @@ public class ConverterHelper {
             Types.CHAR));
     SUPPORTED_CONVERSIONS.put(
         Types.TIME,
-        java.util.Arrays.asList(
+        List.of(
             Types.TIME,
             Types.TIMESTAMP,
             Types.VARCHAR,
@@ -251,7 +257,7 @@ public class ConverterHelper {
             Types.BINARY));
     SUPPORTED_CONVERSIONS.put(
         Types.TIMESTAMP,
-        java.util.Arrays.asList(
+        List.of(
             Types.TIMESTAMP,
             Types.DATE,
             Types.TIME,
@@ -265,7 +271,7 @@ public class ConverterHelper {
     // Binary Types
     SUPPORTED_CONVERSIONS.put(
         Types.BINARY,
-        java.util.Arrays.asList(
+        List.of(
             Types.BINARY,
             Types.VARBINARY,
             Types.LONGVARBINARY,
@@ -275,7 +281,7 @@ public class ConverterHelper {
             Types.CHAR));
     SUPPORTED_CONVERSIONS.put(
         Types.VARBINARY,
-        java.util.Arrays.asList(
+        List.of(
             Types.VARBINARY,
             Types.LONGVARBINARY,
             Types.CHAR,
@@ -285,7 +291,7 @@ public class ConverterHelper {
             Types.VARCHAR));
     SUPPORTED_CONVERSIONS.put(
         Types.LONGVARBINARY,
-        java.util.Arrays.asList(
+        List.of(
             Types.LONGVARBINARY,
             Types.BINARY,
             Types.VARBINARY,
@@ -297,7 +303,7 @@ public class ConverterHelper {
     // Character Types
     SUPPORTED_CONVERSIONS.put(
         Types.CHAR,
-        java.util.Arrays.asList(
+        List.of(
             Types.CHAR,
             Types.VARCHAR,
             Types.LONGVARCHAR,
@@ -320,7 +326,7 @@ public class ConverterHelper {
             Types.TIME));
     SUPPORTED_CONVERSIONS.put(
         Types.VARCHAR,
-        java.util.Arrays.asList(
+        List.of(
             Types.VARCHAR,
             Types.CHAR,
             Types.LONGVARCHAR,
@@ -343,7 +349,7 @@ public class ConverterHelper {
             Types.DOUBLE));
     SUPPORTED_CONVERSIONS.put(
         Types.LONGVARCHAR,
-        java.util.Arrays.asList(
+        List.of(
             Types.LONGVARCHAR,
             Types.VARCHAR,
             Types.NVARCHAR,
@@ -363,7 +369,7 @@ public class ConverterHelper {
             Types.TIMESTAMP));
     SUPPORTED_CONVERSIONS.put(
         Types.NVARCHAR,
-        java.util.Arrays.asList(
+        List.of(
             Types.NVARCHAR,
             Types.VARCHAR,
             Types.TIMESTAMP,
@@ -386,9 +392,9 @@ public class ConverterHelper {
             Types.LONGVARBINARY));
 
     // Complex types
-    SUPPORTED_CONVERSIONS.put(Types.OTHER, java.util.Arrays.asList(Types.OTHER));
-    SUPPORTED_CONVERSIONS.put(Types.STRUCT, java.util.Arrays.asList(Types.STRUCT, Types.VARCHAR));
-    SUPPORTED_CONVERSIONS.put(Types.ARRAY, java.util.Arrays.asList(Types.ARRAY, Types.VARCHAR));
+    SUPPORTED_CONVERSIONS.put(Types.OTHER, List.of(Types.OTHER));
+    SUPPORTED_CONVERSIONS.put(Types.STRUCT, List.of(Types.STRUCT, Types.VARCHAR));
+    SUPPORTED_CONVERSIONS.put(Types.ARRAY, List.of(Types.ARRAY, Types.VARCHAR));
   }
 
   static {
@@ -506,6 +512,10 @@ public class ConverterHelper {
       return converter.toDatabricksArray(obj);
     } else if (javaType == Struct.class) {
       return converter.toDatabricksStruct(obj);
+    } else if (javaType == DatabricksGeometry.class) {
+      return converter.toDatabricksGeometry(obj);
+    } else if (javaType == DatabricksGeography.class) {
+      return converter.toDatabricksGeography(obj);
     }
     return converter.toString(obj); // By default, convert to string
   }
@@ -516,8 +526,28 @@ public class ConverterHelper {
    * @param columnSqlType The SQL type of the column, as defined in java.sql.Types
    * @return An ObjectConverter suitable for the specified SQL type
    */
+  // TODO: replace all usages of this method with getConverterForColumnType
   public static ObjectConverter getConverterForSqlType(int columnSqlType) {
     return CONVERTER_CACHE.getOrDefault(columnSqlType, CONVERTER_CACHE.get(Types.VARCHAR));
+  }
+
+  /**
+   * Retrieves the appropriate ObjectConverter for a given SQL type and column type name. This
+   * method provides metadata-aware converter selection, checking the actual column type name first
+   * for database-specific types before falling back to SQL type-based selection.
+   *
+   * @param columnSqlType The SQL type of the column, as defined in java.sql.Types
+   * @param columnTypeName The actual column type name from metadata (e.g., "GEOMETRY", "GEOGRAPHY")
+   * @return An ObjectConverter suitable for the specified column type
+   */
+  public static ObjectConverter getConverterForColumnType(
+      int columnSqlType, String columnTypeName) {
+    if (columnTypeName != null) {
+      if (columnTypeName.equals(GEOMETRY) || columnTypeName.equals(GEOGRAPHY)) {
+        return GEOSPATIAL_CONVERTER;
+      }
+    }
+    return getConverterForSqlType(columnSqlType);
   }
 
   public static boolean isConversionSupported(int fromType, int toType) {

@@ -1,9 +1,7 @@
 package com.databricks.jdbc.api.impl;
 
 import static com.databricks.jdbc.common.DatabricksJdbcConstants.EMPTY_STRING;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.ARRAY;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.MAP;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.STRUCT;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.*;
 
 import com.databricks.jdbc.api.IDatabricksResultSet;
 import com.databricks.jdbc.api.IExecutionStatus;
@@ -479,13 +477,29 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   }
 
   /**
-   * Checks if the given type name represents a complex type (ARRAY, MAP, or STRUCT).
+   * Checks if the given type name represents a complex type (ARRAY, MAP, STRUCT, GEOMETRY, or
+   * GEOGRAPHY).
    *
    * @param typeName The type name to check
-   * @return true if the type name starts with ARRAY, MAP, or STRUCT, false otherwise
+   * @return true if the type name starts with ARRAY, MAP, STRUCT, GEOMETRY, or GEOGRAPHY, false
+   *     otherwise
    */
   private static boolean isComplexType(String typeName) {
-    return typeName.startsWith(ARRAY) || typeName.startsWith(MAP) || typeName.startsWith(STRUCT);
+    return typeName.startsWith(ARRAY)
+        || typeName.startsWith(MAP)
+        || typeName.startsWith(STRUCT)
+        || typeName.startsWith(GEOMETRY)
+        || typeName.startsWith(GEOGRAPHY);
+  }
+
+  /**
+   * Checks if the given type name represents a geospatial type (GEOMETRY or GEOGRAPHY).
+   *
+   * @param typeName The type name to check
+   * @return true if the type name starts with GEOMETRY or GEOGRAPHY, false otherwise
+   */
+  private static boolean isGeospatialType(String typeName) {
+    return typeName.startsWith(GEOMETRY) || typeName.startsWith(GEOGRAPHY);
   }
 
   @Override
@@ -500,6 +514,13 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     // separate handling for complex data types
     if (isComplexType(columnTypeName)) {
       return handleComplexDataTypes(obj, columnTypeName);
+    }
+    // VARIANT types should only accept String objects
+    if (VARIANT.equals(columnTypeName)) {
+      if (!(obj instanceof String)) {
+        throw new DatabricksValidationException(
+            "VARIANT type only supports String objects, got: " + obj.getClass().getSimpleName());
+      }
     }
     // TODO: Add separate handling for INTERVAL JSON_ARRAY result format.
     return ConverterHelper.convertSqlTypeToJavaType(columnType, obj);
@@ -523,6 +544,10 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       return parser.parseJsonStringToDbMap(obj.toString(), columnName).toString();
     } else if (columnName.startsWith(STRUCT)) {
       return parser.parseJsonStringToDbStruct(obj.toString(), columnName).toString();
+    } else if (columnName.startsWith(GEOMETRY)) {
+      return obj;
+    } else if (columnName.startsWith(GEOGRAPHY)) {
+      return obj;
     }
     throw new DatabricksParsingException(
         "Unexpected metadata format. Type is not a COMPLEX: " + columnName,
@@ -583,6 +608,16 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     return executionResult.getCurrentRow() == -1;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p><b>Limitation:</b> For lazy-loaded result sets ({@link LazyThriftResult}), particularly
+   * those using {@link
+   * com.databricks.jdbc.model.client.thrift.generated.TSparkRowSetType#COLUMN_BASED_SET}, this
+   * method cannot reliably determine the cursor position. The total row count remains unknown until
+   * all rows are fetched, preventing accurate detection of whether the cursor is after the last
+   * row. This is specific to Databricks JDBC dialect.
+   */
   @Override
   public boolean isAfterLast() throws SQLException {
     checkIfClosed();
@@ -595,9 +630,27 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     return executionResult.getCurrentRow() == 0;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>This method uses different strategies based on the result set type:
+   *
+   * <ul>
+   *   <li>For {@link LazyThriftResult} instances: Checks if there are no more rows available (using
+   *       {@code hasNext()}), since the total row count is unknown until all rows are fetched.
+   *   <li>For other result types: Compares the current row position against the known total row
+   *       count.
+   * </ul>
+   *
+   * @return {@code true} if the cursor is on the last row, {@code false} otherwise
+   * @throws SQLException if the result set is closed or an error occurs
+   */
   @Override
   public boolean isLast() throws SQLException {
     checkIfClosed();
+    if (executionResult instanceof LazyThriftResult) {
+      return executionResult.getCurrentRow() >= 0 && !executionResult.hasNext();
+    }
     return executionResult.getCurrentRow() == resultSetMetaData.getTotalRows() - 1;
   }
 
@@ -1222,11 +1275,12 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   }
 
   /**
-   * Retrieves the SQL `Map` from the specified column index in the result set.
+   * Retrieves the SQL {@code Map} from the specified column index in the result set.
    *
    * @param columnIndex the index of the column in the result set (1-based)
-   * @return a `Map<String, Object>` if the column contains a map; `null` if the value is SQL `NULL`
-   * @throws SQLException if the column is not of `MAP` type or if any SQL error occurs
+   * @return a {@code Map<String, Object>} if the column contains a map; {@code null} if the value
+   *     is SQL {@code NULL}
+   * @throws SQLException if the column is not of {@code MAP} type or if any SQL error occurs
    */
   @Override
   public Map getMap(int columnIndex) throws SQLException {
@@ -1366,9 +1420,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       useCal.set(Calendar.HOUR_OF_DAY, ldt.getHour());
       useCal.set(Calendar.MINUTE, ldt.getMinute());
       useCal.set(Calendar.SECOND, ldt.getSecond());
-      useCal.set(Calendar.MILLISECOND, timestamp.getNanos() / 1_000_000);
+      useCal.set(Calendar.MILLISECOND, 0);
 
-      return new Timestamp(useCal.getTimeInMillis());
+      var ts = new Timestamp(useCal.getTimeInMillis());
+      ts.setNanos(timestamp.getNanos());
+      return ts;
     }
     return timestamp;
   }
@@ -1931,7 +1987,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       return defaultValue.get();
     }
     int columnType = resultSetMetaData.getColumnType(columnIndex);
-    ObjectConverter converter = ConverterHelper.getConverterForSqlType(columnType);
+    String columnTypeName = resultSetMetaData.getColumnTypeName(columnIndex);
+
+    // Use metadata-aware converter selection for proper handling of databricks-specific types
+    ObjectConverter converter =
+        ConverterHelper.getConverterForColumnType(columnType, columnTypeName);
     return convertMethod.apply(converter, obj);
   }
 

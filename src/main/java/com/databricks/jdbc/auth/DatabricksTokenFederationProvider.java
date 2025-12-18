@@ -46,17 +46,17 @@ public class DatabricksTokenFederationProvider implements CredentialsProvider, T
   private static final JdbcLogger LOGGER =
       JdbcLoggerFactory.getLogger(DatabricksTokenFederationProvider.class);
   private Token token;
-  private static final Map<String, String> TOKEN_EXCHANGE_PARAMS;
-
-  static {
-    java.util.HashMap<String, String> m = new java.util.HashMap<String, String>();
-    m.put("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange");
-    m.put("scope", "sql");
-    m.put("subject_token_type", "urn:ietf:params:oauth:token-type:jwt");
-    m.put("return_original_token_if_authenticated", "true");
-    TOKEN_EXCHANGE_PARAMS = java.util.Collections.unmodifiableMap(m);
-  }
-
+  private HeaderFactory externalHeaderFactory;
+  private static final Map<String, String> TOKEN_EXCHANGE_PARAMS =
+      Map.of(
+          "grant_type",
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+          "scope",
+          "sql",
+          "subject_token_type",
+          "urn:ietf:params:oauth:token-type:jwt",
+          "return_original_token_if_authenticated",
+          "true");
   private static final String TOKEN_EXCHANGE_ENDPOINT = "/oidc/v1/token";
   private final IDatabricksConnectionContext connectionContext;
   private final CredentialsProvider credentialsProvider;
@@ -70,6 +70,9 @@ public class DatabricksTokenFederationProvider implements CredentialsProvider, T
     this.credentialsProvider = credentialsProvider;
     this.externalProviderHeaders = new HashMap<>();
     this.hc = DatabricksHttpClientFactory.getInstance().getClient(connectionContext);
+    // Initialize a minimal config; real config will be provided via configure(databricksConfig)
+    this.config = null;
+    this.externalHeaderFactory = null;
     this.token =
         new Token(
             DatabricksJdbcConstants.EMPTY_STRING,
@@ -86,6 +89,7 @@ public class DatabricksTokenFederationProvider implements CredentialsProvider, T
     this.connectionContext = connectionContext;
     this.credentialsProvider = credentialsProvider;
     this.config = config;
+    this.externalHeaderFactory = this.credentialsProvider.configure(this.config);
     this.externalProviderHeaders = new HashMap<>();
     this.token =
         new Token(
@@ -114,6 +118,8 @@ public class DatabricksTokenFederationProvider implements CredentialsProvider, T
     }
 
     this.config = databricksConfig;
+    // Call the underlying provider's configure ONCE and cache the HeaderFactory
+    this.externalHeaderFactory = this.credentialsProvider.configure(this.config);
     return () -> {
       Token exchangedToken = getToken();
       Map<String, String> headers = new HashMap<>(this.externalProviderHeaders);
@@ -125,7 +131,11 @@ public class DatabricksTokenFederationProvider implements CredentialsProvider, T
   }
 
   public Token getToken() {
-    this.externalProviderHeaders = this.credentialsProvider.configure(this.config).headers();
+    if (this.externalHeaderFactory == null) {
+      // Lazy-initialize if configure(databricksConfig) was not called yet
+      this.externalHeaderFactory = this.credentialsProvider.configure(this.config);
+    }
+    this.externalProviderHeaders = this.externalHeaderFactory.headers();
     String[] tokenInfo = extractTokenInfoFromHeader(this.externalProviderHeaders);
     String accessTokenType = tokenInfo[0];
     String accessToken = tokenInfo[1];
@@ -134,12 +144,12 @@ public class DatabricksTokenFederationProvider implements CredentialsProvider, T
       SignedJWT signedJWT = SignedJWT.parse(accessToken);
       JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
 
-      Optional<Token> optionalToken = Optional.<Token>empty();
+      Optional<Token> optionalToken = Optional.empty();
       if (!isSameHost(claims.getIssuer(), this.config.getHost())) {
         optionalToken = tryTokenExchange(accessToken, accessTokenType);
       }
-      if (!optionalToken.isPresent()) {
-        optionalToken = Optional.<Token>of(createToken(accessToken, accessTokenType));
+      if (optionalToken.isEmpty()) {
+        optionalToken = Optional.of(createToken(accessToken, accessTokenType));
       }
       return optionalToken.get();
     } catch (Exception e) {

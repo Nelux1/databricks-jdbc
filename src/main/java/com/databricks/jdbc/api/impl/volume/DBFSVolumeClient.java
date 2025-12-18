@@ -89,18 +89,6 @@ public class DBFSVolumeClient implements IDatabricksVolumeClient, Closeable {
 
   private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
-  // Scheduler for retrying operations in a JDK 8-compatible way
-  private static final ScheduledExecutorService RETRY_SCHEDULER =
-      Executors.newSingleThreadScheduledExecutor(
-          new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-              Thread t = new Thread(r, "dbfs-retry");
-              t.setDaemon(true);
-              return t;
-            }
-          });
-
   @VisibleForTesting
   public DBFSVolumeClient(WorkspaceClient workspaceClient) {
     this.connectionContext = null;
@@ -737,7 +725,7 @@ public class DBFSVolumeClient implements IDatabricksVolumeClient, Closeable {
       final int index = i; // Make effectively final for lambda usage
       Optional<UploadRequest> optionalRequest = uploadRequests.get(index);
 
-      if (!optionalRequest.isPresent()) {
+      if (optionalRequest.isEmpty()) {
         // Error case: create a failed result immediately
         String errorMessage = "File not found or not a file: " + originalPaths.get(index);
         futures[index] =
@@ -748,7 +736,7 @@ public class DBFSVolumeClient implements IDatabricksVolumeClient, Closeable {
 
       // Valid request: process the upload
       UploadRequest request = optionalRequest.get();
-      CompletableFuture<VolumePutResult> uploadFuture = new CompletableFuture<VolumePutResult>();
+      CompletableFuture<VolumePutResult> uploadFuture = new CompletableFuture<>();
       futures[index] = uploadFuture;
 
       LOGGER.debug(
@@ -985,26 +973,25 @@ public class DBFSVolumeClient implements IDatabricksVolumeClient, Closeable {
         elapsedSeconds,
         timeoutSeconds);
 
-    RETRY_SCHEDULER.schedule(
-        () -> {
-          // The retry will return a new future; we pipe its result into our original future.
-          requestPresignedUrlWithRetry(ucVolumePath, objectPath, attempt + 1, retryStartTime)
-              .whenComplete(
-                  (response, ex) -> {
-                    if (ex != null) {
-                      LOGGER.error(
-                          ex,
-                          "Failed to get presigned URL for {} (attempt {})",
-                          objectPath,
-                          attempt + 1);
-                      future.completeExceptionally(ex);
-                    } else {
-                      future.complete(response);
-                    }
-                  });
-        },
-        retryDelayMs,
-        TimeUnit.MILLISECONDS);
+    CompletableFuture.delayedExecutor(retryDelayMs, TimeUnit.MILLISECONDS)
+        .execute(
+            () -> {
+              // The retry will return a new future; we pipe its result into our original future.
+              requestPresignedUrlWithRetry(ucVolumePath, objectPath, attempt + 1, retryStartTime)
+                  .whenComplete(
+                      (response, ex) -> {
+                        if (ex != null) {
+                          LOGGER.error(
+                              ex,
+                              "Failed to get presigned URL for {} (attempt {})",
+                              objectPath,
+                              attempt + 1);
+                          future.completeExceptionally(ex);
+                        } else {
+                          future.complete(response);
+                        }
+                      });
+            });
   }
 
   // Helper method to calculate retry delay with exponential backoff and jitter
