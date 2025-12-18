@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.databricks.jdbc.api.IDatabricksConnectionContext;
 import com.databricks.jdbc.common.IDatabricksComputeResource;
 import com.databricks.jdbc.common.StatementType;
 import com.databricks.jdbc.common.Warehouse;
@@ -18,6 +17,7 @@ import com.databricks.jdbc.model.client.sqlexec.ExecuteStatementRequest;
 import com.databricks.jdbc.model.client.sqlexec.ExecuteStatementResponse;
 import com.databricks.jdbc.model.core.ResultData;
 import com.databricks.jdbc.model.core.ResultManifest;
+import com.databricks.jdbc.model.core.ResultSchema;
 import com.databricks.sdk.core.ApiClient;
 import com.databricks.sdk.core.http.Request;
 import com.databricks.sdk.service.sql.*;
@@ -112,14 +112,10 @@ public class DatabricksSdkClientTest {
   @Test
   public void testCreateSession() throws DatabricksSQLException, IOException {
     setupSessionMocks();
-    IDatabricksConnectionContext connectionContext =
-        (IDatabricksConnectionContext)
-            DatabricksConnectionContext.parse(JDBC_URL, new Properties());
+    com.databricks.jdbc.api.internal.IDatabricksConnectionContext connectionContext =
+        DatabricksConnectionContext.parse(JDBC_URL, new Properties());
     DatabricksSdkClient databricksSdkClient =
-        new DatabricksSdkClient(
-            (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
-            statementExecutionService,
-            apiClient);
+        new DatabricksSdkClient(connectionContext, statementExecutionService, apiClient);
     ImmutableSessionInfo sessionInfo =
         databricksSdkClient.createSession(warehouse, null, null, null);
     assertEquals(sessionInfo.sessionId(), SESSION_ID);
@@ -129,14 +125,10 @@ public class DatabricksSdkClientTest {
   @Test
   public void testExecuteStatement() throws Exception {
     setupClientMocks(true, false);
-    IDatabricksConnectionContext connectionContext =
-        (IDatabricksConnectionContext)
-            DatabricksConnectionContext.parse(JDBC_URL, new Properties());
+    com.databricks.jdbc.api.internal.IDatabricksConnectionContext connectionContext =
+        DatabricksConnectionContext.parse(JDBC_URL, new Properties());
     DatabricksSdkClient databricksSdkClient =
-        new DatabricksSdkClient(
-            (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
-            statementExecutionService,
-            apiClient);
+        new DatabricksSdkClient(connectionContext, statementExecutionService, apiClient);
     DatabricksConnection connection =
         new DatabricksConnection(
             (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
@@ -172,18 +164,12 @@ public class DatabricksSdkClientTest {
   @Test
   public void testExecuteStatementAsync() throws Exception {
     setupClientMocks(false, true);
-    IDatabricksConnectionContext connectionContext =
-        (IDatabricksConnectionContext)
-            DatabricksConnectionContext.parse(JDBC_URL, new Properties());
+    com.databricks.jdbc.api.internal.IDatabricksConnectionContext connectionContext =
+        DatabricksConnectionContext.parse(JDBC_URL, new Properties());
     DatabricksSdkClient databricksSdkClient =
-        new DatabricksSdkClient(
-            (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
-            statementExecutionService,
-            apiClient);
+        new DatabricksSdkClient(connectionContext, statementExecutionService, apiClient);
     DatabricksConnection connection =
-        new DatabricksConnection(
-            (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
-            databricksSdkClient);
+        new DatabricksConnection(connectionContext, databricksSdkClient);
     connection.open();
     DatabricksStatement statement = new DatabricksStatement(connection);
     statement.setMaxRows(100);
@@ -210,14 +196,10 @@ public class DatabricksSdkClientTest {
   @Test
   public void testCloseStatement() throws DatabricksSQLException, IOException {
     String path = String.format(STATEMENT_PATH_WITH_ID, STATEMENT_ID);
-    IDatabricksConnectionContext connectionContext =
-        (IDatabricksConnectionContext)
-            DatabricksConnectionContext.parse(JDBC_URL, new Properties());
+    com.databricks.jdbc.api.internal.IDatabricksConnectionContext connectionContext =
+        DatabricksConnectionContext.parse(JDBC_URL, new Properties());
     DatabricksSdkClient databricksSdkClient =
-        new DatabricksSdkClient(
-            (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
-            statementExecutionService,
-            apiClient);
+        new DatabricksSdkClient(connectionContext, statementExecutionService, apiClient);
     CloseStatementRequest request =
         new CloseStatementRequest().setStatementId(STATEMENT_ID.toSQLExecStatementId());
     databricksSdkClient.closeStatement(STATEMENT_ID);
@@ -228,14 +210,10 @@ public class DatabricksSdkClientTest {
   @Test
   public void testCancelStatement() throws DatabricksSQLException, IOException {
     String path = String.format(CANCEL_STATEMENT_PATH_WITH_ID, STATEMENT_ID);
-    IDatabricksConnectionContext connectionContext =
-        (IDatabricksConnectionContext)
-            DatabricksConnectionContext.parse(JDBC_URL, new Properties());
+    com.databricks.jdbc.api.internal.IDatabricksConnectionContext connectionContext =
+        DatabricksConnectionContext.parse(JDBC_URL, new Properties());
     DatabricksSdkClient databricksSdkClient =
-        new DatabricksSdkClient(
-            (com.databricks.jdbc.api.internal.IDatabricksConnectionContext) connectionContext,
-            statementExecutionService,
-            apiClient);
+        new DatabricksSdkClient(connectionContext, statementExecutionService, apiClient);
     CancelStatementRequest request =
         new CancelStatementRequest().setStatementId(STATEMENT_ID.toSQLExecStatementId());
     databricksSdkClient.cancelStatement(STATEMENT_ID);
