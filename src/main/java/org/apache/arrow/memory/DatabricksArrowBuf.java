@@ -103,12 +103,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
     }
   }
 
-  private void ensureAccessible() {
-    if (this.refCnt() == 0) {
-      throw new IllegalStateException("Ref count should be >= 1 for accessing the ArrowBuf");
-    }
-  }
-
   @Override
   public ReferenceManager getReferenceManager() {
     return referenceManager;
@@ -219,7 +213,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
   }
 
   private void checkIndexD(long index, long fieldLength) {
-    ensureAccessible();
     Preconditions.checkArgument(fieldLength >= 0, "expecting non-negative data length");
     if (index < 0 || index > capacity() - fieldLength) {
       throw new IndexOutOfBoundsException(
@@ -330,7 +323,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private void ensureWritable(final int length) {
     if (BoundsChecking.BOUNDS_CHECKING_ENABLED) {
       Preconditions.checkArgument(length >= 0, "expecting non-negative length");
-      this.ensureAccessible();
       if (length > writableBytes()) {
         throw new IndexOutOfBoundsException(
             String.format(
@@ -343,7 +335,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private void ensureReadable(final int length) {
     if (BoundsChecking.BOUNDS_CHECKING_ENABLED) {
       Preconditions.checkArgument(length >= 0, "expecting non-negative length");
-      this.ensureAccessible();
       if (length > readableBytes()) {
         throw new IndexOutOfBoundsException(
             String.format(
@@ -439,7 +430,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   private void checkIndex(long index, long fieldLength) {
     if (BoundsChecking.BOUNDS_CHECKING_ENABLED) {
-      this.ensureAccessible();
       if (isOutOfBounds(index, fieldLength, this.capacity())) {
         throw new IndexOutOfBoundsException(
             String.format(
