@@ -35,19 +35,27 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private long writerIndex;
 
   /**
+   * Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class.
+   */
+  private static final int MEMORY_ADDRESS = 0;
+
+  /**
+   * ArrowBuf uses native order, copying the same logic here.
+   */
+  private static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
+
+  /**
    * Constructs a new DatabricksArrowBuf backed by a heap ByteBuffer.
    *
    * @param referenceManager The memory manager to track memory usage and reference count
    * @param bufferManager The buffer manager for reallocation support
    * @param capacity The capacity in bytes of this buffer
-   * @param memoryAddress Ignored - kept for API compatibility with parent class
    */
   public DatabricksArrowBuf(
       ReferenceManager referenceManager,
       BufferManager bufferManager,
-      long capacity,
-      long memoryAddress) {
-    super(referenceManager, bufferManager, capacity, memoryAddress);
+      long capacity) {
+    super(referenceManager, bufferManager, capacity, MEMORY_ADDRESS);
 
     this.referenceManager = referenceManager;
     this.bufferManager = bufferManager;
@@ -62,7 +70,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
     }
 
     this.byteBuffer = ByteBuffer.allocate((int) capacity);
-    this.byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
+    this.byteBuffer.order(BYTE_ORDER);
   }
 
   /**
@@ -72,7 +80,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
    * @param bufferManager The buffer manager
    * @param byteBuffer The underlying ByteBuffer (shared with parent)
    * @param offset The offset within the ByteBuffer
-   * @param capacity The capacity of this slice
+   * @param capacity The capacity in bytes of this buffer
    */
   DatabricksArrowBuf(
       ReferenceManager referenceManager,
@@ -80,7 +88,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
       ByteBuffer byteBuffer,
       int offset,
       long capacity) {
-    super(referenceManager, bufferManager, capacity, 0);
+    super(referenceManager, bufferManager, capacity, MEMORY_ADDRESS);
 
     this.referenceManager = referenceManager;
     this.bufferManager = bufferManager;
@@ -132,7 +140,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   @Override
   public ByteOrder order() {
-    return ByteOrder.LITTLE_ENDIAN;
+    return BYTE_ORDER;
   }
 
   @Override
@@ -172,19 +180,16 @@ public class DatabricksArrowBuf extends ArrowBuf {
   @Override
   public ByteBuffer nioBuffer(long index, int length) {
     chk(index, length);
-    // Create a duplicate to avoid affecting the original buffer's position/limit
     ByteBuffer duplicate = byteBuffer.duplicate();
-    duplicate.order(ByteOrder.LITTLE_ENDIAN);
-    duplicate.position(offset + (int) index);
-    duplicate.limit(offset + (int) index + length);
-    return duplicate.slice().order(ByteOrder.LITTLE_ENDIAN);
+    duplicate.order(BYTE_ORDER);
+    duplicate.position(offset + (int)index);
+    duplicate.limit(offset + (int)index + length);
+    return duplicate;
   }
 
   @Override
   public long memoryAddress() {
-    // ByteBuffer-backed implementation doesn't have a direct memory address
-    // Return 0 to indicate this
-    return 0;
+    return MEMORY_ADDRESS;
   }
 
   @Override
@@ -521,6 +526,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
   public void getBytes(long index, ArrowBuf dst, long dstIndex, int length) {
     checkIndex(index, length);
     Preconditions.checkArgument(dst != null, "expecting a valid ArrowBuf");
+    checkBufferType(dst);
     if (isOutOfBounds(dstIndex, length, dst.capacity())) {
       throw new IndexOutOfBoundsException(
           String.format(
@@ -537,6 +543,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
   public void setBytes(long index, ArrowBuf src, long srcIndex, long length) {
     checkIndex(index, length);
     Preconditions.checkArgument(src != null, "expecting a valid ArrowBuf");
+    checkBufferType(src);
     if (isOutOfBounds(srcIndex, length, src.capacity())) {
       throw new IndexOutOfBoundsException(
           String.format(
@@ -552,6 +559,8 @@ public class DatabricksArrowBuf extends ArrowBuf {
   @Override
   public void setBytes(long index, ArrowBuf src) {
     Preconditions.checkArgument(src != null, "expecting valid ArrowBuf");
+    checkBufferType(src);
+
     final long length = src.readableBytes();
     checkIndex(index, length);
     byte[] tmp = new byte[(int) length];
@@ -705,16 +714,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
   }
 
   /**
-   * Returns the underlying ByteBuffer. This is useful for direct access to the buffer when needed
-   * for interoperability with other ByteBuffer-based APIs.
-   *
-   * @return the underlying ByteBuffer
-   */
-  public ByteBuffer getByteBuffer() {
-    return byteBuffer;
-  }
-
-  /**
    * Returns the offset within the underlying ByteBuffer where this buffer's data starts. This is
    * used for sliced buffers that share the same underlying ByteBuffer.
    *
@@ -722,5 +721,11 @@ public class DatabricksArrowBuf extends ArrowBuf {
    */
   public int getOffset() {
     return offset;
+  }
+
+  private void checkBufferType(ArrowBuf buffer) {
+    if (!(buffer instanceof DatabricksArrowBuf)) {
+      throw new IllegalArgumentException("Buffer should be an instance of DatabricksArrowBuf");
+    }
   }
 }
