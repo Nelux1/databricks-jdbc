@@ -51,7 +51,7 @@ public class DatabricksBufferAllocator implements BufferAllocator {
     this.parent = parent;
 
     // Create an empty buffer with a no-op reference manager
-    this.emptyBuffer = new DatabricksArrowBuf(ReferenceManager.NO_OP, null, 0, 0);
+    this.emptyBuffer = new DatabricksArrowBuf(ReferenceManager.NO_OP, null, 0);
   }
 
   @Override
@@ -70,7 +70,7 @@ public class DatabricksBufferAllocator implements BufferAllocator {
 
     // Create the reference manager and buffer
     DatabricksReferenceManager refManager = new DatabricksReferenceManager(this, size);
-    return new DatabricksArrowBuf(refManager, manager, size, 0);
+    return new DatabricksArrowBuf(refManager, manager, size);
   }
 
   @Override
