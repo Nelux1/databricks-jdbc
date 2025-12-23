@@ -64,9 +64,14 @@ class DatabricksReferenceManager implements ReferenceManager {
         length,
         Integer.MAX_VALUE);
 
-    // TODO
-    //        Preconditions.checkArgument(index + length <= srcBuf.capacity(),
-    //                "Index and length exceeds")
+    Preconditions.checkArgument(
+        index + length <= sourceBuffer.capacity(),
+        "Index="
+            + index
+            + " and length="
+            + length
+            + " exceeds source buffer capacity="
+            + sourceBuffer.capacity());
 
     // Create a new DatabricksArrowBuf sharing the same byte buffer.
     DatabricksArrowBuf buf = checkBufferType(sourceBuffer);
