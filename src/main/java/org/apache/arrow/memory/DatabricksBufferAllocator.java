@@ -118,19 +118,16 @@ public class DatabricksBufferAllocator implements BufferAllocator {
 
   @Override
   public long getAllocatedMemory() {
-    // FIXME
     return 0;
   }
 
   @Override
   public long getLimit() {
-    // FIXME
     return Integer.MAX_VALUE;
   }
 
   @Override
   public long getInitReservation() {
-    // FIXME
     return 0;
   }
 
@@ -147,7 +144,6 @@ public class DatabricksBufferAllocator implements BufferAllocator {
 
   @Override
   public long getHeadroom() {
-    // FIXME
     return Integer.MAX_VALUE;
   }
 
