@@ -933,9 +933,7 @@ public class DatabricksArrowBufTest {
         () -> buffer.toHexString(0, bufferSize), "To hex string should not throw exception.");
   }
 
-  /**
-   * Test print.
-   */
+  /** Test print. */
   @Test
   public void testPrint() {
     int bufferSize = 1024;
@@ -968,28 +966,24 @@ public class DatabricksArrowBufTest {
     }
   }
 
-  /**
-   * Test reader and writer index.
-   */
+  /** Test reader and writer index. */
   @Test
   public void testReaderAndWriterIndex() {
     int bufferSize = 1024;
     DatabricksArrowBuf buffer = newBuffer(bufferSize);
 
-    for(int i = 0; i < buffer.capacity(); i++) {
+    for (int i = 0; i < buffer.capacity(); i++) {
       buffer.writeByte(getByteValue(i));
-      assertEquals(i+1, buffer.writerIndex(), "writerIndex should be same");
+      assertEquals(i + 1, buffer.writerIndex(), "writerIndex should be same");
     }
 
     for (int i = 0; i < buffer.capacity(); i++) {
       buffer.readByte();
-      assertEquals(i+1, buffer.readerIndex(), "readerIndex should be same");
+      assertEquals(i + 1, buffer.readerIndex(), "readerIndex should be same");
     }
   }
 
-  /**
-   * Test set zero.
-   */
+  /** Test set zero. */
   @Test
   public void testSetZero() {
     int bufferSize = 1024;
@@ -1010,13 +1004,11 @@ public class DatabricksArrowBufTest {
     }
 
     for (int i = 0; i < buffer.capacity(); i++) {
-      assertEquals(0, buffer.getByte(i),  "Byte values should be same at index "+ index);
+      assertEquals(0, buffer.getByte(i), "Byte values should be same at index " + index);
     }
   }
 
-  /**
-   * Test set zero.
-   */
+  /** Test set zero. */
   @Test
   public void testSetOne() {
     int bufferSize = 1024;
@@ -1037,13 +1029,11 @@ public class DatabricksArrowBufTest {
     }
 
     for (int i = 0; i < buffer.capacity(); i++) {
-      assertEquals((byte)0xff, buffer.getByte(i),  "Byte values should be same at index " + index);
+      assertEquals((byte) 0xff, buffer.getByte(i), "Byte values should be same at index " + index);
     }
   }
 
-  /**
-   * Test realloc.
-   */
+  /** Test realloc. */
   @Test
   public void testRealloc() {
     int bufferSize = 1024;
@@ -1054,14 +1044,13 @@ public class DatabricksArrowBufTest {
       assertEquals(buffer, realloced, "Should be the same");
     }
 
-    assertThrows(UnsupportedOperationException.class,
-            () -> buffer.reallocIfNeeded(buffer.capacity()+ 1),
-            "Realloc above capacity should fail.");
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> buffer.reallocIfNeeded(buffer.capacity() + 1),
+        "Realloc above capacity should fail.");
   }
 
-  /**
-   * Test clear.
-   */
+  /** Test clear. */
   @Test
   public void testClear() {
     int bufferSize = 1024;
@@ -1079,7 +1068,6 @@ public class DatabricksArrowBufTest {
     buffer.clear();
     assertEquals(0, buffer.writerIndex(), "Write index should be zero");
     assertEquals(0, buffer.readerIndex(), "Write index should be zero");
-
   }
 
   @SuppressWarnings("SameParameterValue")

@@ -34,14 +34,10 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private long readerIndex;
   private long writerIndex;
 
-  /**
-   * Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class.
-   */
+  /** Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class. */
   private static final int MEMORY_ADDRESS = 0;
 
-  /**
-   * ArrowBuf uses native order, copying the same logic here.
-   */
+  /** ArrowBuf uses native order, copying the same logic here. */
   private static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
 
   /**
@@ -52,9 +48,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
    * @param capacity The capacity in bytes of this buffer
    */
   public DatabricksArrowBuf(
-      ReferenceManager referenceManager,
-      BufferManager bufferManager,
-      long capacity) {
+      ReferenceManager referenceManager, BufferManager bufferManager, long capacity) {
     super(referenceManager, bufferManager, capacity, MEMORY_ADDRESS);
 
     this.referenceManager = referenceManager;
@@ -182,8 +176,8 @@ public class DatabricksArrowBuf extends ArrowBuf {
     chk(index, length);
     ByteBuffer duplicate = byteBuffer.duplicate();
     duplicate.order(BYTE_ORDER);
-    duplicate.position(offset + (int)index);
-    duplicate.limit(offset + (int)index + length);
+    duplicate.position(offset + (int) index);
+    duplicate.limit(offset + (int) index + length);
     return duplicate;
   }
 
