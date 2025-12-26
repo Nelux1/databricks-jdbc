@@ -130,20 +130,22 @@ public class DatabricksBufferAllocatorTest {
     DatabricksBufferAllocator allocator = new DatabricksBufferAllocator();
     assertDoesNotThrow(allocator::assertOpen, "Assert should not throw exception");
     allocator.close();
-    assertThrows(IllegalStateException.class, allocator::assertOpen, "Assert should throw exception");
+    assertThrows(
+        IllegalStateException.class, allocator::assertOpen, "Assert should throw exception");
   }
 
   /** Test wrap foreign allocation fails */
   @Test
   public void testWrapForeignAllocationFails() {
     DatabricksBufferAllocator allocator = new DatabricksBufferAllocator();
-    ForeignAllocation foreignAllocation = new ForeignAllocation(0, 0) {
-      @Override
-      protected void release0() {
-
-      }
-    };
-    assertThrows(UnsupportedOperationException.class,
-            () -> allocator.wrapForeignAllocation(foreignAllocation), "Wrap should fail");
+    ForeignAllocation foreignAllocation =
+        new ForeignAllocation(0, 0) {
+          @Override
+          protected void release0() {}
+        };
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> allocator.wrapForeignAllocation(foreignAllocation),
+        "Wrap should fail");
   }
 }
