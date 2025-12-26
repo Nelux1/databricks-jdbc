@@ -74,6 +74,7 @@
     <grpc.version>1.71.0</grpc.version>
     <resilience4j.version>1.7.0</resilience4j.version>
     <maven-toolchains-plugin.version>3.2.0</maven-toolchains-plugin.version>
+    <jmh.version>1.37</jmh.version>
   </properties>
   <dependencyManagement>
     <!-- Force safe version of commons-lang3 https://nvd.nist.gov/vuln/detail/CVE-2025-48924 -->
@@ -295,6 +296,20 @@
       <artifactId>jts-core</artifactId>
       <version>1.20.0</version>
     </dependency>
+    <!-- https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-core -->
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-core</artifactId>
+      <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- https://mvnrepository.com/artifact/org.openjdk.jmh/jmh-generator-annprocess -->
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-generator-annprocess</artifactId>
+      <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -391,6 +406,11 @@
               <groupId>org.immutables</groupId>
               <artifactId>value</artifactId>
               <version>${immutables.value.version}</version>
+            </path>
+            <path>
+              <groupId>org.openjdk.jmh</groupId>
+              <artifactId>jmh-generator-annprocess</artifactId>
+              <version>${jmh.version}</version>
             </path>
           </annotationProcessorPaths>
         </configuration>
