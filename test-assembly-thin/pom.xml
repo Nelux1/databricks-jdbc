@@ -14,9 +14,7 @@
     <artifactId>test-databricks-jdbc-thin</artifactId>
     <packaging>jar</packaging>
     <name>Test thin</name>
-    <description>
-        JDBC databricks driver.
-    </description>
+    <description>Test JDBC databricks driver thin jar.</description>
 
     <dependencies>
         <dependency>

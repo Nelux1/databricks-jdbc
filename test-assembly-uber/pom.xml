@@ -14,9 +14,7 @@
   <artifactId>test-databricks-jdbc-uber</artifactId>
   <packaging>jar</packaging>
   <name>Test Uber</name>
-  <description>
-    JDBC databricks driver.
-  </description>
+  <description>Test JDBC databricks driver uber jar.</description>
 
   <dependencies>
     <dependency>
