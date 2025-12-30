@@ -717,6 +717,13 @@ public class DatabricksArrowBuf extends ArrowBuf {
     return offset;
   }
 
+  /**
+   * @return the underlying ByteBuffer.
+   */
+  ByteBuffer getByteBuffer() {
+    return byteBuffer;
+  }
+
   private void checkBufferType(ArrowBuf buffer) {
     if (!(buffer instanceof DatabricksArrowBuf)) {
       throw new IllegalArgumentException("Buffer should be an instance of DatabricksArrowBuf");

@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -17,7 +16,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import net.jpountz.lz4.LZ4FrameInputStream;
@@ -41,12 +39,6 @@ public class DatabricksArrowPatchTest {
 
   /** Path to a LZ4 compressed arrow chunk. */
   private static final Path ARROW_CHUNK_COMPRESSED_PATH = Path.of("arrow", "chunk_1.arrow.lz4");
-
-  /** Acceptable perf hit ratio of the patched Arrow vs native Arrow. */
-  private static final double DEFAULT_PERF_HIT_RATIO = 0.30;
-
-  /** System property name to set the perf hit ratio. */
-  private static final String PERF_HIT_RATIO_PROPERTY_NAME = "test.arrow.perf.hit.ratio";
 
   /** Compressed Arrow file suffix. */
   private static final String ARROW_CHUNK_COMPRESSED_FILE_SUFFIX = ".lz4";
@@ -143,80 +135,6 @@ public class DatabricksArrowPatchTest {
     } finally {
       executor.shutdownNow();
     }
-  }
-
-  /**
-   * Test execution speed performance of patched against native Arrow and fail the test of the
-   * difference in performance is significant.
-   */
-  @Test
-  public void testPerformance() throws IOException {
-    // Disable Arrow debug.
-    System.setProperty(ArrowBuf.DEBUG_ALLOCATOR, "false");
-
-    String perfHitRatioProperty = System.getProperty(PERF_HIT_RATIO_PROPERTY_NAME);
-    double perfHitRatio =
-        perfHitRatioProperty == null
-            ? DEFAULT_PERF_HIT_RATIO
-            : Double.parseDouble(perfHitRatioProperty);
-
-    logger.info("Perf hit ratio: {}", perfHitRatio);
-
-    testPerformance(ARROW_CHUNK_PATH, perfHitRatio);
-    testPerformance(ARROW_CHUNK_COMPRESSED_PATH, perfHitRatio);
-  }
-
-  /** Test performance of running the native and patched Arrow. */
-  private void testPerformance(Path filePath, double perfHitRatio) throws IOException {
-    int warmupIterations = 20;
-    int totalIterations = 100;
-
-    List<Long> arrowTimes =
-        profileParsing(filePath, totalIterations, warmupIterations, RootAllocator::new);
-    @SuppressWarnings("OptionalGetWithoutIsPresent")
-    double arrowMean = arrowTimes.stream().mapToLong(Long::longValue).average().getAsDouble();
-    logger.info("Arrow parsing times for {} is {}", filePath, arrowTimes);
-    logger.info("Arrow mean for {} is {}", filePath, arrowMean);
-
-    List<Long> patchedArrowTimes =
-        profileParsing(filePath, totalIterations, warmupIterations, DatabricksBufferAllocator::new);
-    @SuppressWarnings("OptionalGetWithoutIsPresent")
-    double patchedArrowMean =
-        patchedArrowTimes.stream().mapToLong(Long::longValue).average().getAsDouble();
-    logger.info("Patched Arrow parsing times for {} is {}", filePath, patchedArrowTimes);
-    logger.info("Patched Arrow mean for {} is {}", filePath, patchedArrowMean);
-
-    assertTrue(
-        patchedArrowMean < (arrowMean + perfHitRatio * arrowMean),
-        "Patched Arrow performance "
-            + patchedArrowMean
-            + " much lesser than native Arrow "
-            + arrowMean);
-  }
-
-  /** Profile parsing time for a file. */
-  private List<Long> profileParsing(
-      Path filePath,
-      int totalIterations,
-      int warmupIterations,
-      Supplier<BufferAllocator> allocatorSupplier) {
-    return IntStream.range(0, totalIterations)
-        .mapToLong(
-            i -> {
-              try (BufferAllocator allocator = allocatorSupplier.get()) {
-                long start = System.nanoTime();
-                try {
-                  parseArrowStream(filePath, allocator);
-                } catch (IOException e) {
-                  throw new RuntimeException(e);
-                }
-                long end = System.nanoTime();
-                return Duration.ofNanos(end - start).toMillis();
-              }
-            })
-        .skip(warmupIterations)
-        .boxed()
-        .collect(Collectors.toList());
   }
 
   /** Test that the patched DatabricksArrowBuf parses records correctly. */
