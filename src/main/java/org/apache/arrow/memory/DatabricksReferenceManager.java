@@ -76,7 +76,7 @@ class DatabricksReferenceManager implements ReferenceManager {
     // Create a new DatabricksArrowBuf sharing the same byte buffer.
     DatabricksArrowBuf buf = checkBufferType(sourceBuffer);
     return new DatabricksArrowBuf(
-        this, null, buf.nioBuffer(), buf.getOffset() + (int) index, length);
+        this, null, buf.getByteBuffer(), buf.getOffset() + (int) index, length);
   }
 
   @Override
