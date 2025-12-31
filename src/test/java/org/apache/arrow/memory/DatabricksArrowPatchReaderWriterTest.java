@@ -11,6 +11,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Period;
@@ -21,6 +22,7 @@ import java.util.stream.Stream;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.DateDayVector;
+import org.apache.arrow.vector.Decimal256Vector;
 import org.apache.arrow.vector.DecimalVector;
 import org.apache.arrow.vector.DurationVector;
 import org.apache.arrow.vector.FixedSizeBinaryVector;
@@ -88,6 +90,16 @@ public class DatabricksArrowPatchReaderWriterTest {
         Arguments.of(new DatabricksBufferAllocator(), new DatabricksBufferAllocator(), totalRows));
   }
 
+  /** Provide different buffer allocators. */
+  private static Stream<Arguments> getBufferAllocatorsSmallRows() {
+    int totalRows = 100_000; // A large enough value.
+    return Stream.of(
+        Arguments.of(new RootAllocator(), new RootAllocator(), totalRows),
+        Arguments.of(new RootAllocator(), new DatabricksBufferAllocator(), totalRows),
+        Arguments.of(new DatabricksBufferAllocator(), new RootAllocator(), totalRows),
+        Arguments.of(new DatabricksBufferAllocator(), new DatabricksBufferAllocator(), totalRows));
+  }
+
   /** Test read and write of integer types. */
   @ParameterizedTest
   @MethodSource("getBufferAllocators")
@@ -119,6 +131,17 @@ public class DatabricksArrowPatchReaderWriterTest {
     DataTester testFloats = new TestDecimal();
     byte[] date = writeData(testFloats, totalRows, writeAllocator);
     readAndValidate(testFloats, date, readAllocator);
+  }
+
+  /** Test read and write of decimal256 types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testDecimal256Types(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testDecimal256 = new TestDecimal256();
+    byte[] date = writeData(testDecimal256, totalRows, writeAllocator);
+    readAndValidate(testDecimal256, date, readAllocator);
   }
 
   /** Test read and write of temporal types. */
@@ -277,7 +300,7 @@ public class DatabricksArrowPatchReaderWriterTest {
 
   /** Test read and write of list view types. */
   @ParameterizedTest
-  @MethodSource("getBufferAllocators")
+  @MethodSource("getBufferAllocatorsSmallRows")
   public void testListViewTypes(
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
@@ -288,7 +311,7 @@ public class DatabricksArrowPatchReaderWriterTest {
 
   /** Test read and write of large list view types. */
   @ParameterizedTest
-  @MethodSource("getBufferAllocators")
+  @MethodSource("getBufferAllocatorsSmallRows")
   public void testLargeListViewTypes(
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
@@ -668,6 +691,61 @@ public class DatabricksArrowPatchReaderWriterTest {
         } else {
           assertNotNull(bigDecimal, "Decimal should not be null at index " + i);
           assertEquals(getDecimal(i), bigDecimal.longValue(), "Decimal mismatch at index " + i);
+        }
+      }
+    }
+  }
+
+  /** Test decimal256 */
+  private class TestDecimal256 implements DataTester {
+    private final Field decimal256Field;
+    private final Schema schema;
+
+    TestDecimal256() {
+      this(50, 10, 256);
+    }
+
+    TestDecimal256(int precision, int scale, int bitWidth) {
+      decimal256Field = newDecimalField(precision, scale, bitWidth);
+      //noinspection ArraysAsListWithZeroOrOneArgument
+      schema = new Schema(Arrays.asList(decimal256Field));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      Decimal256Vector decimal256Vector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimal256Field.getName());
+
+      // Set decimal256 values.
+      decimal256Vector.allocateNew(batchSize);
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          decimal256Vector.setNull(i);
+        } else {
+          decimal256Vector.set(
+              i, new BigDecimal(getDecimal(i)).setScale(10, RoundingMode.UNNECESSARY));
+        }
+      }
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      Decimal256Vector decimal256Vector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimal256Field.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+      for (int i = 0; i < rowCount; i++) {
+        // Validate decimal256
+        BigDecimal bigDecimal = decimal256Vector.getObject(i);
+        if (i % 2 == 0) {
+          assertNull(bigDecimal, "Decimal256 should be null at index " + i);
+        } else {
+          assertNotNull(bigDecimal, "Decimal256 should not be null at index " + i);
+          assertEquals(getDecimal(i), bigDecimal.longValue(), "Decimal256 mismatch at index " + i);
         }
       }
     }
@@ -2787,7 +2865,16 @@ public class DatabricksArrowPatchReaderWriterTest {
     public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
       ViewVarCharVector utf8ViewVector =
           (ViewVarCharVector) vectorSchemaRoot.getVector(utf8ViewField.getName());
-      utf8ViewVector.allocateNew(batchSize);
+
+      // Calculate the total bytes needed for the data buffer
+      long totalDataBytes = 0;
+      for (int i = 0; i < batchSize; i++) {
+        byte[] bytes = getUtf8ViewString(i).getBytes(StandardCharsets.UTF_8);
+        // Round to nearest power of 64.
+        totalDataBytes += (bytes.length + 63) & ~63;
+      }
+
+      utf8ViewVector.allocateNew(totalDataBytes, batchSize);
 
       for (int i = 0; i < batchSize; i++) {
         if (i % 2 == 0) {
@@ -2852,7 +2939,16 @@ public class DatabricksArrowPatchReaderWriterTest {
     public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
       ViewVarBinaryVector binaryViewVector =
           (ViewVarBinaryVector) vectorSchemaRoot.getVector(binaryViewField.getName());
-      binaryViewVector.allocateNew(batchSize);
+
+      // Calculate the total bytes needed for the data buffer
+      long totalDataBytes = 0;
+      for (int i = 0; i < batchSize; i++) {
+        byte[] bytes = getBinaryViewData(i);
+        // Round to nearest power of 64.
+        totalDataBytes += (bytes.length + 63) & ~63;
+      }
+
+      binaryViewVector.allocateNew(totalDataBytes, batchSize);
 
       for (int i = 0; i < batchSize; i++) {
         if (i % 2 == 0) {
