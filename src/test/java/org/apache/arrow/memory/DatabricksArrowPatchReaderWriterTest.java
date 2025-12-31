@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 import org.apache.arrow.vector.BigIntVector;
+import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.DateDayVector;
 import org.apache.arrow.vector.DecimalVector;
 import org.apache.arrow.vector.DurationVector;
@@ -30,6 +31,7 @@ import org.apache.arrow.vector.IntervalDayVector;
 import org.apache.arrow.vector.IntervalYearVector;
 import org.apache.arrow.vector.LargeVarBinaryVector;
 import org.apache.arrow.vector.LargeVarCharVector;
+import org.apache.arrow.vector.NullVector;
 import org.apache.arrow.vector.SmallIntVector;
 import org.apache.arrow.vector.TimeSecVector;
 import org.apache.arrow.vector.TimeStampMilliTZVector;
@@ -41,9 +43,14 @@ import org.apache.arrow.vector.UInt8Vector;
 import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.ViewVarBinaryVector;
+import org.apache.arrow.vector.ViewVarCharVector;
 import org.apache.arrow.vector.complex.DenseUnionVector;
+import org.apache.arrow.vector.complex.FixedSizeListVector;
 import org.apache.arrow.vector.complex.LargeListVector;
+import org.apache.arrow.vector.complex.LargeListViewVector;
 import org.apache.arrow.vector.complex.ListVector;
+import org.apache.arrow.vector.complex.ListViewVector;
 import org.apache.arrow.vector.complex.MapVector;
 import org.apache.arrow.vector.complex.RunEndEncodedVector;
 import org.apache.arrow.vector.complex.StructVector;
@@ -73,7 +80,7 @@ public class DatabricksArrowPatchReaderWriterTest {
 
   /** Provide different buffer allocators. */
   private static Stream<Arguments> getBufferAllocators() {
-    int totalRows = 3_000_000;
+    int totalRows = 3_000_000; // A large enough value.
     return Stream.of(
         Arguments.of(new RootAllocator(), new RootAllocator(), totalRows),
         Arguments.of(new RootAllocator(), new DatabricksBufferAllocator(), totalRows),
@@ -211,6 +218,83 @@ public class DatabricksArrowPatchReaderWriterTest {
     DataTester testRunEndEncoded = new TestRunEndEncodedTypes();
     byte[] date = writeData(testRunEndEncoded, totalRows, writeAllocator);
     readAndValidate(testRunEndEncoded, date, readAllocator);
+  }
+
+  /** Test read and write of null types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testNullTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testNull = new TestNullTypes();
+    byte[] date = writeData(testNull, totalRows, writeAllocator);
+    readAndValidate(testNull, date, readAllocator);
+  }
+
+  /** Test read and write of boolean types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testBoolTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testBool = new TestBoolTypes();
+    byte[] date = writeData(testBool, totalRows, writeAllocator);
+    readAndValidate(testBool, date, readAllocator);
+  }
+
+  /** Test read and write of fixed-size list types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testFixedSizeListTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testFixedSizeList = new TestFixedSizeListTypes();
+    byte[] date = writeData(testFixedSizeList, totalRows, writeAllocator);
+    readAndValidate(testFixedSizeList, date, readAllocator);
+  }
+
+  /** Test read and write of UTF8 view types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testUtf8ViewTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testUtf8View = new TestUtf8ViewTypes();
+    byte[] date = writeData(testUtf8View, totalRows, writeAllocator);
+    readAndValidate(testUtf8View, date, readAllocator);
+  }
+
+  /** Test read and write of binary view types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testBinaryViewTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testBinaryView = new TestBinaryViewTypes();
+    byte[] date = writeData(testBinaryView, totalRows, writeAllocator);
+    readAndValidate(testBinaryView, date, readAllocator);
+  }
+
+  /** Test read and write of list view types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testListViewTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testListView = new TestListViewTypes();
+    byte[] date = writeData(testListView, totalRows, writeAllocator);
+    readAndValidate(testListView, date, readAllocator);
+  }
+
+  /** Test read and write of large list view types. */
+  @ParameterizedTest
+  @MethodSource("getBufferAllocators")
+  public void testLargeListViewTypes(
+      BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
+      throws Exception {
+    DataTester testLargeListView = new TestLargeListViewTypes();
+    byte[] date = writeData(testLargeListView, totalRows, writeAllocator);
+    readAndValidate(testLargeListView, date, readAllocator);
   }
 
   private byte[] writeData(DataTester dataTester, int totalRowCount, BufferAllocator allocator)
@@ -2517,6 +2601,483 @@ public class DatabricksArrowPatchReaderWriterTest {
           "ree-long",
           FieldType.nullable(new ArrowType.RunEndEncoded()),
           Arrays.asList(runEndField, valueField));
+    }
+  }
+
+  /** Test null types */
+  private class TestNullTypes implements DataTester {
+    private final Field nullField;
+    private final Schema schema;
+
+    TestNullTypes() {
+      nullField = newNullField();
+      schema = new Schema(Collections.singletonList(nullField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      NullVector nullVector = (NullVector) vectorSchemaRoot.getVector(nullField.getName());
+      nullVector.allocateNew();
+      nullVector.setValueCount(batchSize);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      NullVector nullVector = (NullVector) vectorSchemaRoot.getVector(nullField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        assertTrue(nullVector.isNull(i), "Null vector should be null at index " + i);
+      }
+    }
+
+    private Field newNullField() {
+      return new Field("null-field", FieldType.nullable(new ArrowType.Null()), null);
+    }
+  }
+
+  /** Test boolean types */
+  private class TestBoolTypes implements DataTester {
+    private final Field boolField;
+    private final Schema schema;
+
+    TestBoolTypes() {
+      boolField = newBoolField();
+      schema = new Schema(Collections.singletonList(boolField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      BitVector boolVector = (BitVector) vectorSchemaRoot.getVector(boolField.getName());
+      boolVector.allocateNew(batchSize);
+
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 3 == 0) {
+          boolVector.setNull(i);
+        } else if (i % 2 == 0) {
+          boolVector.set(i, 0); // false
+        } else {
+          boolVector.set(i, 1); // true
+        }
+      }
+      boolVector.setValueCount(batchSize);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      BitVector boolVector = (BitVector) vectorSchemaRoot.getVector(boolField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        if (i % 3 == 0) {
+          assertTrue(boolVector.isNull(i), "Bool should be null at index " + i);
+        } else if (i % 2 == 0) {
+          assertFalse(boolVector.isNull(i), "Bool should not be null at index " + i);
+          assertEquals(0, boolVector.get(i), "Bool should be false (0) at index " + i);
+        } else {
+          assertFalse(boolVector.isNull(i), "Bool should not be null at index " + i);
+          assertEquals(1, boolVector.get(i), "Bool should be true (1) at index " + i);
+        }
+      }
+    }
+
+    private Field newBoolField() {
+      return new Field("bool-field", FieldType.nullable(new ArrowType.Bool()), null);
+    }
+  }
+
+  /** Test fixed-size list types */
+  private class TestFixedSizeListTypes implements DataTester {
+    private final Field fixedSizeListField;
+    private final Schema schema;
+    private final int LIST_SIZE = 3;
+
+    TestFixedSizeListTypes() {
+      fixedSizeListField = newFixedSizeListField();
+      schema = new Schema(Collections.singletonList(fixedSizeListField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      FixedSizeListVector fixedSizeListVector =
+          (FixedSizeListVector) vectorSchemaRoot.getVector(fixedSizeListField.getName());
+      fixedSizeListVector.allocateNew();
+
+      IntVector childVector = (IntVector) fixedSizeListVector.getDataVector();
+      childVector.allocateNew(batchSize * LIST_SIZE);
+
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          fixedSizeListVector.setNull(i);
+        } else {
+          for (int j = 0; j < LIST_SIZE; j++) {
+            childVector.set(i * LIST_SIZE + j, i * 10 + j);
+          }
+          fixedSizeListVector.setNotNull(i);
+        }
+      }
+      fixedSizeListVector.setValueCount(batchSize);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      FixedSizeListVector fixedSizeListVector =
+          (FixedSizeListVector) vectorSchemaRoot.getVector(fixedSizeListField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        if (i % 2 == 0) {
+          assertTrue(fixedSizeListVector.isNull(i), "Fixed-size list should be null at index " + i);
+        } else {
+          assertFalse(
+              fixedSizeListVector.isNull(i), "Fixed-size list should not be null at index " + i);
+          List<?> list = fixedSizeListVector.getObject(i);
+          assertNotNull(list, "Fixed-size list should not be null at index " + i);
+          assertEquals(LIST_SIZE, list.size(), "Fixed-size list size mismatch at index " + i);
+          for (int j = 0; j < LIST_SIZE; j++) {
+            assertEquals(
+                i * 10 + j,
+                list.get(j),
+                "Fixed-size list element mismatch at index " + i + "[" + j + "]");
+          }
+        }
+      }
+    }
+
+    private Field newFixedSizeListField() {
+      return new Field(
+          "fixed-size-list",
+          FieldType.nullable(new ArrowType.FixedSizeList(LIST_SIZE)),
+          Collections.singletonList(
+              new Field("$data$", FieldType.nullable(new ArrowType.Int(32, true)), null)));
+    }
+  }
+
+  /** Test UTF8 view types */
+  private class TestUtf8ViewTypes implements DataTester {
+    private final Field utf8ViewField;
+    private final Schema schema;
+
+    TestUtf8ViewTypes() {
+      utf8ViewField = newUtf8ViewField();
+      schema = new Schema(Collections.singletonList(utf8ViewField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      ViewVarCharVector utf8ViewVector =
+          (ViewVarCharVector) vectorSchemaRoot.getVector(utf8ViewField.getName());
+      utf8ViewVector.allocateNew(batchSize);
+
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          utf8ViewVector.setNull(i);
+        } else {
+          utf8ViewVector.set(i, getUtf8ViewString(i).getBytes(StandardCharsets.UTF_8));
+        }
+      }
+      utf8ViewVector.setValueCount(batchSize);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      ViewVarCharVector utf8ViewVector =
+          (ViewVarCharVector) vectorSchemaRoot.getVector(utf8ViewField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        if (i % 2 == 0) {
+          assertTrue(utf8ViewVector.isNull(i), "UTF8 view string should be null at index " + i);
+        } else {
+          String expected = getUtf8ViewString(i);
+          byte[] actualBytes = utf8ViewVector.get(i);
+          assertNotNull(actualBytes, "UTF8 view string should not be null at index " + i);
+          String actual = new String(actualBytes, StandardCharsets.UTF_8);
+          assertEquals(expected, actual, "UTF8 view string mismatch at index " + i);
+        }
+      }
+    }
+
+    private Field newUtf8ViewField() {
+      return new Field("utf8-view-string", FieldType.nullable(new ArrowType.Utf8View()), null);
+    }
+
+    private String getUtf8ViewString(int index) {
+      // Strings of length <= 12 are inlined.
+      // See https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout
+      if (index % 3 == 0) {
+        return "short-" + index;
+      } else {
+        return "Utf8View-" + index + "-StringData";
+      }
+    }
+  }
+
+  /** Test binary view types */
+  private class TestBinaryViewTypes implements DataTester {
+    private final Field binaryViewField;
+    private final Schema schema;
+
+    TestBinaryViewTypes() {
+      binaryViewField = newBinaryViewField();
+      schema = new Schema(Collections.singletonList(binaryViewField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      ViewVarBinaryVector binaryViewVector =
+          (ViewVarBinaryVector) vectorSchemaRoot.getVector(binaryViewField.getName());
+      binaryViewVector.allocateNew(batchSize);
+
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          binaryViewVector.setNull(i);
+        } else {
+          binaryViewVector.set(i, getBinaryViewData(i));
+        }
+      }
+      binaryViewVector.setValueCount(batchSize);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      ViewVarBinaryVector binaryViewVector =
+          (ViewVarBinaryVector) vectorSchemaRoot.getVector(binaryViewField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        if (i % 2 == 0) {
+          assertTrue(binaryViewVector.isNull(i), "Binary view should be null at index " + i);
+        } else {
+          byte[] expected = getBinaryViewData(i);
+          byte[] actual = binaryViewVector.get(i);
+          assertNotNull(actual, "Binary view should not be null at index " + i);
+          assertArrayEquals(expected, actual, "Binary view mismatch at index " + i);
+        }
+      }
+    }
+
+    private Field newBinaryViewField() {
+      return new Field("binary-view", FieldType.nullable(new ArrowType.BinaryView()), null);
+    }
+
+    private byte[] getBinaryViewData(int index) {
+      int length = (index % 20) + 1;
+      byte[] data = new byte[length];
+      for (int i = 0; i < length; i++) {
+        data[i] = (byte) ((index * 5 + i) % 256);
+      }
+      return data;
+    }
+  }
+
+  /** Test list view types */
+  private class TestListViewTypes implements DataTester {
+    private final Field listViewField;
+    private final Schema schema;
+
+    TestListViewTypes() {
+      listViewField = newListViewField();
+      schema = new Schema(Collections.singletonList(listViewField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      ListViewVector listViewVector =
+          (ListViewVector) vectorSchemaRoot.getVector(listViewField.getName());
+      listViewVector.allocateNew();
+
+      IntVector childVector = (IntVector) listViewVector.getDataVector();
+
+      // Calculate total child elements needed
+      int totalElements = 0;
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 != 0) {
+          totalElements += getListViewSize(i);
+        }
+      }
+      childVector.allocateNew(totalElements);
+
+      // Populate child vector with all data first
+      int childIndex = 0;
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          listViewVector.setNull(i);
+        } else {
+          int startOffset = listViewVector.startNewValue(i);
+          int listSize = getListViewSize(i);
+          for (int j = 0; j < listSize; j++) {
+            childVector.set(startOffset + j, getListViewElement(i, j));
+          }
+          listViewVector.endValue(i, listSize);
+        }
+      }
+      listViewVector.setValueCount(batchSize);
+      childVector.setValueCount(childIndex);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      ListViewVector listViewVector =
+          (ListViewVector) vectorSchemaRoot.getVector(listViewField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        if (i % 2 == 0) {
+          assertTrue(listViewVector.isNull(i), "List view should be null at index " + i);
+        } else {
+          assertFalse(listViewVector.isNull(i), "List view should not be null at index " + i);
+          List<?> list = listViewVector.getObject(i);
+          assertNotNull(list, "List view should not be null at index " + i);
+          int expectedSize = getListViewSize(i);
+          assertEquals(expectedSize, list.size(), "List view size mismatch at index " + i);
+          for (int j = 0; j < expectedSize; j++) {
+            assertEquals(
+                getListViewElement(i, j),
+                list.get(j),
+                "List view element mismatch at index " + i + "[" + j + "]");
+          }
+        }
+      }
+    }
+
+    private Field newListViewField() {
+      return new Field(
+          "list-view-int",
+          FieldType.nullable(new ArrowType.ListView()),
+          Collections.singletonList(
+              new Field("$data$", FieldType.nullable(new ArrowType.Int(32, true)), null)));
+    }
+
+    private int getListViewSize(int index) {
+      return (index % 5) + 1;
+    }
+
+    private int getListViewElement(int rowIndex, int elementIndex) {
+      return rowIndex * 50 + elementIndex;
+    }
+  }
+
+  /** Test large list view types */
+  private class TestLargeListViewTypes implements DataTester {
+    private final Field largeListViewField;
+    private final Schema schema;
+
+    TestLargeListViewTypes() {
+      largeListViewField = newLargeListViewField();
+      schema = new Schema(Collections.singletonList(largeListViewField));
+    }
+
+    @Override
+    public Schema getSchema() {
+      return schema;
+    }
+
+    @Override
+    public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
+      LargeListViewVector largeListViewVector =
+          (LargeListViewVector) vectorSchemaRoot.getVector(largeListViewField.getName());
+      largeListViewVector.allocateNew();
+
+      IntVector childVector = (IntVector) largeListViewVector.getDataVector();
+
+      // Calculate total child elements needed
+      int totalElements = 0;
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 != 0) {
+          totalElements += getLargeListViewSize(i);
+        }
+      }
+      childVector.allocateNew(totalElements);
+
+      // Populate child vector with all data first
+      int childIndex = 0;
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          largeListViewVector.setNull(i);
+        } else {
+          long startOffset = largeListViewVector.startNewValue(i);
+          int listSize = getLargeListViewSize(i);
+          for (int j = 0; j < listSize; j++) {
+            childVector.set((int) startOffset + j, getLargeListViewElement(i, j));
+          }
+          largeListViewVector.endValue(i, listSize);
+        }
+      }
+      largeListViewVector.setValueCount(batchSize);
+      childVector.setValueCount(childIndex);
+    }
+
+    @Override
+    public void validateData(VectorSchemaRoot vectorSchemaRoot) {
+      LargeListViewVector largeListViewVector =
+          (LargeListViewVector) vectorSchemaRoot.getVector(largeListViewField.getName());
+      int rowCount = vectorSchemaRoot.getRowCount();
+
+      for (int i = 0; i < rowCount; i++) {
+        if (i % 2 == 0) {
+          assertTrue(largeListViewVector.isNull(i), "Large list view should be null at index " + i);
+        } else {
+          assertFalse(
+              largeListViewVector.isNull(i), "Large list view should not be null at index " + i);
+          List<?> list = largeListViewVector.getObject(i);
+          assertNotNull(list, "Large list view should not be null at index " + i);
+          int expectedSize = getLargeListViewSize(i);
+          assertEquals(expectedSize, list.size(), "Large list view size mismatch at index " + i);
+          for (int j = 0; j < expectedSize; j++) {
+            assertEquals(
+                getLargeListViewElement(i, j),
+                list.get(j),
+                "Large list view element mismatch at index " + i + "[" + j + "]");
+          }
+        }
+      }
+    }
+
+    private Field newLargeListViewField() {
+      return new Field(
+          "large-list-view-int",
+          FieldType.nullable(new ArrowType.LargeListView()),
+          Collections.singletonList(
+              new Field("$data$", FieldType.nullable(new ArrowType.Int(32, true)), null)));
+    }
+
+    private int getLargeListViewSize(int index) {
+      return (index % 7) + 1;
+    }
+
+    private int getLargeListViewElement(int rowIndex, int elementIndex) {
+      return rowIndex * 100 + elementIndex;
     }
   }
 
