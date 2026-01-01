@@ -30,12 +30,16 @@ import org.apache.arrow.vector.Float4Vector;
 import org.apache.arrow.vector.Float8Vector;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.IntervalDayVector;
+import org.apache.arrow.vector.IntervalMonthDayNanoVector;
 import org.apache.arrow.vector.IntervalYearVector;
 import org.apache.arrow.vector.LargeVarBinaryVector;
 import org.apache.arrow.vector.LargeVarCharVector;
 import org.apache.arrow.vector.NullVector;
+import org.apache.arrow.vector.PeriodDuration;
 import org.apache.arrow.vector.SmallIntVector;
+import org.apache.arrow.vector.TimeNanoVector;
 import org.apache.arrow.vector.TimeSecVector;
+import org.apache.arrow.vector.TimeStampMicroTZVector;
 import org.apache.arrow.vector.TimeStampMilliTZVector;
 import org.apache.arrow.vector.TinyIntVector;
 import org.apache.arrow.vector.UInt1Vector;
@@ -61,8 +65,10 @@ import org.apache.arrow.vector.complex.impl.UnionListWriter;
 import org.apache.arrow.vector.holders.NullableIntervalDayHolder;
 import org.apache.arrow.vector.ipc.ArrowStreamReader;
 import org.apache.arrow.vector.ipc.ArrowStreamWriter;
+import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.IntervalUnit;
+import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.UnionMode;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -644,18 +650,17 @@ public class DatabricksArrowPatchReaderWriterTest {
 
   /** Test decimals */
   private class TestDecimal implements DataTester {
-    private final Field decimalField;
-    private final Schema schema;
-
-    TestDecimal() {
-      this(16, 0, 128);
-    }
-
-    TestDecimal(int precision, int scale, int bitWidth) {
-      decimalField = newDecimalField(precision, scale, bitWidth);
-      //noinspection ArraysAsListWithZeroOrOneArgument
-      schema = new Schema(Arrays.asList(decimalField));
-    }
+    private final Field decimalFullPrecisionField = newDecimalField(38, 0, 128);
+    private final Field decimalTenPrecisionField = newDecimalField(10, 5, 128);
+    private final Field decimalTwentyPrecisionField = newDecimalField(20, 10, 128);
+    private final Field decimalZeroScaleField = newDecimalField(16, 0, 128);
+    private final Schema schema =
+        new Schema(
+            Arrays.asList(
+                decimalFullPrecisionField,
+                decimalTenPrecisionField,
+                decimalTwentyPrecisionField,
+                decimalZeroScaleField));
 
     @Override
     public Schema getSchema() {
@@ -664,25 +669,52 @@ public class DatabricksArrowPatchReaderWriterTest {
 
     @Override
     public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
-      DecimalVector decimalVector =
-          (DecimalVector) vectorSchemaRoot.getVector(decimalField.getName());
+      DecimalVector decimalFullPrecisionVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalFullPrecisionField.getName());
+      DecimalVector decimalTenPrecisionVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalTenPrecisionField.getName());
+      DecimalVector decimalTwentyPrecisionVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalTwentyPrecisionField.getName());
+      DecimalVector decimalZeroScaleVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalZeroScaleField.getName());
 
+      writeDecimals(decimalFullPrecisionVector, batchSize);
+      writeDecimals(decimalTenPrecisionVector, batchSize);
+      writeDecimals(decimalTwentyPrecisionVector, batchSize);
+      writeDecimals(decimalZeroScaleVector, batchSize);
+    }
+
+    private void writeDecimals(DecimalVector decimalVector, int batchSize) {
       // Set decimals.
       decimalVector.allocateNew(batchSize);
       for (int i = 0; i < batchSize; i++) {
         if (i % 2 == 0) {
           decimalVector.setNull(i);
         } else {
-          decimalVector.set(i, getDecimal(i));
+          decimalVector.set(i, getDecimal(i, decimalVector.getScale()));
         }
       }
     }
 
     @Override
     public void validateData(VectorSchemaRoot vectorSchemaRoot) {
-      DecimalVector decimalVector =
-          (DecimalVector) vectorSchemaRoot.getVector(decimalField.getName());
+      DecimalVector decimalFullPrecisionVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalFullPrecisionField.getName());
+      DecimalVector decimalTenPrecisionVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalTenPrecisionField.getName());
+      DecimalVector decimalTwentyPrecisionVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalTwentyPrecisionField.getName());
+      DecimalVector decimalZeroScaleVector =
+          (DecimalVector) vectorSchemaRoot.getVector(decimalZeroScaleField.getName());
+
       int rowCount = vectorSchemaRoot.getRowCount();
+      validateDecimals(decimalFullPrecisionVector, rowCount);
+      validateDecimals(decimalTenPrecisionVector, rowCount);
+      validateDecimals(decimalTwentyPrecisionVector, rowCount);
+      validateDecimals(decimalZeroScaleVector, rowCount);
+    }
+
+    private void validateDecimals(DecimalVector decimalVector, int rowCount) {
       for (int i = 0; i < rowCount; i++) {
         // Validate decimal
         BigDecimal bigDecimal = decimalVector.getObject(i);
@@ -690,7 +722,10 @@ public class DatabricksArrowPatchReaderWriterTest {
           assertNull(bigDecimal, "Decimal should be null at index " + i);
         } else {
           assertNotNull(bigDecimal, "Decimal should not be null at index " + i);
-          assertEquals(getDecimal(i), bigDecimal.longValue(), "Decimal mismatch at index " + i);
+          assertEquals(
+              getDecimal(i, decimalVector.getScale()),
+              bigDecimal,
+              "Decimal mismatch at index " + i);
         }
       }
     }
@@ -698,18 +733,17 @@ public class DatabricksArrowPatchReaderWriterTest {
 
   /** Test decimal256 */
   private class TestDecimal256 implements DataTester {
-    private final Field decimal256Field;
-    private final Schema schema;
-
-    TestDecimal256() {
-      this(50, 10, 256);
-    }
-
-    TestDecimal256(int precision, int scale, int bitWidth) {
-      decimal256Field = newDecimalField(precision, scale, bitWidth);
-      //noinspection ArraysAsListWithZeroOrOneArgument
-      schema = new Schema(Arrays.asList(decimal256Field));
-    }
+    private final Field decimalFullPrecisionField = newDecimalField(76, 10, 256);
+    private final Field decimalTenPrecisionField = newDecimalField(10, 5, 256);
+    private final Field decimalTwentyPrecisionField = newDecimalField(20, 10, 256);
+    private final Field decimalZeroScaleField = newDecimalField(32, 0, 256);
+    private final Schema schema =
+        new Schema(
+            Arrays.asList(
+                decimalFullPrecisionField,
+                decimalTenPrecisionField,
+                decimalTwentyPrecisionField,
+                decimalZeroScaleField));
 
     @Override
     public Schema getSchema() {
@@ -718,34 +752,64 @@ public class DatabricksArrowPatchReaderWriterTest {
 
     @Override
     public void writeData(VectorSchemaRoot vectorSchemaRoot, int batchSize) {
-      Decimal256Vector decimal256Vector =
-          (Decimal256Vector) vectorSchemaRoot.getVector(decimal256Field.getName());
+      Decimal256Vector decimalFullPrecisionVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalFullPrecisionField.getName());
+      Decimal256Vector decimalTenPrecisionVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalTenPrecisionField.getName());
+      Decimal256Vector decimalTwentyPrecisionVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalTwentyPrecisionField.getName());
+      Decimal256Vector decimalZeroScaleVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalZeroScaleField.getName());
 
-      // Set decimal256 values.
-      decimal256Vector.allocateNew(batchSize);
+      writeDecimals(decimalFullPrecisionVector, batchSize);
+      writeDecimals(decimalTenPrecisionVector, batchSize);
+      writeDecimals(decimalTwentyPrecisionVector, batchSize);
+      writeDecimals(decimalZeroScaleVector, batchSize);
+    }
+
+    private void writeDecimals(Decimal256Vector decimalVector, int batchSize) {
+      // Set decimals.
+      decimalVector.allocateNew(batchSize);
       for (int i = 0; i < batchSize; i++) {
         if (i % 2 == 0) {
-          decimal256Vector.setNull(i);
+          decimalVector.setNull(i);
         } else {
-          decimal256Vector.set(
-              i, new BigDecimal(getDecimal(i)).setScale(10, RoundingMode.UNNECESSARY));
+          BigDecimal value = getDecimal(i, decimalVector.getScale());
+          decimalVector.set(i, value);
         }
       }
     }
 
     @Override
     public void validateData(VectorSchemaRoot vectorSchemaRoot) {
-      Decimal256Vector decimal256Vector =
-          (Decimal256Vector) vectorSchemaRoot.getVector(decimal256Field.getName());
+      Decimal256Vector decimalFullPrecisionVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalFullPrecisionField.getName());
+      Decimal256Vector decimalTenPrecisionVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalTenPrecisionField.getName());
+      Decimal256Vector decimalTwentyPrecisionVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalTwentyPrecisionField.getName());
+      Decimal256Vector decimalZeroScaleVector =
+          (Decimal256Vector) vectorSchemaRoot.getVector(decimalZeroScaleField.getName());
+
       int rowCount = vectorSchemaRoot.getRowCount();
+      validateDecimals(decimalFullPrecisionVector, rowCount);
+      validateDecimals(decimalTenPrecisionVector, rowCount);
+      validateDecimals(decimalTwentyPrecisionVector, rowCount);
+      validateDecimals(decimalZeroScaleVector, rowCount);
+    }
+
+    private void validateDecimals(Decimal256Vector decimalVector, int rowCount) {
       for (int i = 0; i < rowCount; i++) {
-        // Validate decimal256
-        BigDecimal bigDecimal = decimal256Vector.getObject(i);
+        // Validate decimal
+        BigDecimal bigDecimal = decimalVector.getObject(i);
         if (i % 2 == 0) {
           assertNull(bigDecimal, "Decimal256 should be null at index " + i);
         } else {
           assertNotNull(bigDecimal, "Decimal256 should not be null at index " + i);
-          assertEquals(getDecimal(i), bigDecimal.longValue(), "Decimal256 mismatch at index " + i);
+          assertEquals(
+              getDecimal(i, decimalVector.getScale()),
+              bigDecimal,
+              "Decimal256 mismatch at index " + i);
         }
       }
     }
@@ -755,28 +819,37 @@ public class DatabricksArrowPatchReaderWriterTest {
   private class TestTemporalTypes implements DataTester {
     private final Field dateDayField;
     private final Field timestampField;
+    private final Field timestampMicroField;
     private final Field timeSecField;
-    private final Field durationSecField;
+    private final Field timeNanoField;
+    private final Field durationMicrosecondField;
     private final Field intervalYearField;
     private final Field intervalDayField;
+    private final Field intervalMonthDayNanoField;
     private final Schema schema;
 
     TestTemporalTypes() {
       dateDayField = newDateDayField();
       timestampField = newTimestampMilliField();
+      timestampMicroField = newTimestampMicroField();
       timeSecField = newTimeSecField();
-      durationSecField = newDurationSecField();
+      timeNanoField = newTimeNanoField();
+      durationMicrosecondField = newDurationMicrosecondField();
       intervalYearField = newIntervalYearField();
       intervalDayField = newIntervalDayField();
+      intervalMonthDayNanoField = newIntervalMonthDayNanoField();
       schema =
           new Schema(
               Arrays.asList(
                   dateDayField,
                   timestampField,
+                  timestampMicroField,
                   timeSecField,
-                  durationSecField,
+                  timeNanoField,
+                  durationMicrosecondField,
                   intervalYearField,
-                  intervalDayField));
+                  intervalDayField,
+                  intervalMonthDayNanoField));
     }
 
     @Override
@@ -790,14 +863,21 @@ public class DatabricksArrowPatchReaderWriterTest {
           (DateDayVector) vectorSchemaRoot.getVector(dateDayField.getName());
       TimeStampMilliTZVector timestampVector =
           (TimeStampMilliTZVector) vectorSchemaRoot.getVector(timestampField.getName());
+      TimeStampMicroTZVector timestampMicroVector =
+          (TimeStampMicroTZVector) vectorSchemaRoot.getVector(timestampMicroField.getName());
       TimeSecVector timeSecVector =
           (TimeSecVector) vectorSchemaRoot.getVector(timeSecField.getName());
+      TimeNanoVector timeNanoVector =
+          (TimeNanoVector) vectorSchemaRoot.getVector(timeNanoField.getName());
       DurationVector durationVector =
-          (DurationVector) vectorSchemaRoot.getVector(durationSecField.getName());
+          (DurationVector) vectorSchemaRoot.getVector(durationMicrosecondField.getName());
       IntervalYearVector intervalYearVector =
           (IntervalYearVector) vectorSchemaRoot.getVector(intervalYearField.getName());
       IntervalDayVector intervalDayVector =
           (IntervalDayVector) vectorSchemaRoot.getVector(intervalDayField.getName());
+      IntervalMonthDayNanoVector intervalMonthDayNanoVector =
+          (IntervalMonthDayNanoVector)
+              vectorSchemaRoot.getVector(intervalMonthDayNanoField.getName());
 
       // Set dates (days since epoch).
       dateDayVector.allocateNew(batchSize);
@@ -819,6 +899,16 @@ public class DatabricksArrowPatchReaderWriterTest {
         }
       }
 
+      // Set timestamps (microseconds since epoch).
+      timestampMicroVector.allocateNew(batchSize);
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          timestampMicroVector.setNull(i);
+        } else {
+          timestampMicroVector.set(i, getTimestampMicro(i));
+        }
+      }
+
       // Set times (seconds since midnight).
       timeSecVector.allocateNew(batchSize);
       for (int i = 0; i < batchSize; i++) {
@@ -829,13 +919,23 @@ public class DatabricksArrowPatchReaderWriterTest {
         }
       }
 
-      // Set durations (seconds).
+      // Set times (nanoseconds since midnight).
+      timeNanoVector.allocateNew(batchSize);
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          timeNanoVector.setNull(i);
+        } else {
+          timeNanoVector.set(i, getTimeNano(i));
+        }
+      }
+
+      // Set durations (microseconds).
       durationVector.allocateNew(batchSize);
       for (int i = 0; i < batchSize; i++) {
         if (i % 2 == 0) {
           durationVector.setNull(i);
         } else {
-          durationVector.set(i, getDurationSec(i));
+          durationVector.set(i, getDurationMicroseconds(i));
         }
       }
 
@@ -858,6 +958,20 @@ public class DatabricksArrowPatchReaderWriterTest {
           intervalDayVector.set(i, getIntervalDayDays(i), getIntervalDayMillis(i));
         }
       }
+
+      // Set interval month-day-nanos.
+      intervalMonthDayNanoVector.allocateNew(batchSize);
+      for (int i = 0; i < batchSize; i++) {
+        if (i % 2 == 0) {
+          intervalMonthDayNanoVector.setNull(i);
+        } else {
+          intervalMonthDayNanoVector.set(
+              i,
+              getIntervalMonthDayNanoMonths(i),
+              getIntervalMonthDayNanoDays(i),
+              getIntervalMonthDayNanoNanos(i));
+        }
+      }
     }
 
     @Override
@@ -866,14 +980,21 @@ public class DatabricksArrowPatchReaderWriterTest {
           (DateDayVector) vectorSchemaRoot.getVector(dateDayField.getName());
       TimeStampMilliTZVector timestampVector =
           (TimeStampMilliTZVector) vectorSchemaRoot.getVector(timestampField.getName());
+      TimeStampMicroTZVector timestampMicroVector =
+          (TimeStampMicroTZVector) vectorSchemaRoot.getVector(timestampMicroField.getName());
       TimeSecVector timeSecVector =
           (TimeSecVector) vectorSchemaRoot.getVector(timeSecField.getName());
+      TimeNanoVector timeNanoVector =
+          (TimeNanoVector) vectorSchemaRoot.getVector(timeNanoField.getName());
       DurationVector durationVector =
-          (DurationVector) vectorSchemaRoot.getVector(durationSecField.getName());
+          (DurationVector) vectorSchemaRoot.getVector(durationMicrosecondField.getName());
       IntervalYearVector intervalYearVector =
           (IntervalYearVector) vectorSchemaRoot.getVector(intervalYearField.getName());
       IntervalDayVector intervalDayVector =
           (IntervalDayVector) vectorSchemaRoot.getVector(intervalDayField.getName());
+      IntervalMonthDayNanoVector intervalMonthDayNanoVector =
+          (IntervalMonthDayNanoVector)
+              vectorSchemaRoot.getVector(intervalMonthDayNanoField.getName());
 
       int rowCount = vectorSchemaRoot.getRowCount();
 
@@ -893,11 +1014,29 @@ public class DatabricksArrowPatchReaderWriterTest {
               getTimestampMilli(i), timestampVector.get(i), "Timestamp mismatch at index " + i);
         }
 
+        // Validate timestamp (microseconds since epoch)
+        if (i % 2 == 0) {
+          assertTrue(
+              timestampMicroVector.isNull(i), "Timestamp micro should be null at index " + i);
+        } else {
+          assertEquals(
+              getTimestampMicro(i),
+              timestampMicroVector.get(i),
+              "Timestamp micro mismatch at index " + i);
+        }
+
         // Validate time (seconds since midnight)
         if (i % 2 == 0) {
           assertTrue(timeSecVector.isNull(i), "Time should be null at index " + i);
         } else {
           assertEquals(getTimeSec(i), timeSecVector.get(i), "Time mismatch at index " + i);
+        }
+
+        // Validate time (nanoseconds since midnight)
+        if (i % 2 == 0) {
+          assertTrue(timeNanoVector.isNull(i), "Time nano should be null at index " + i);
+        } else {
+          assertEquals(getTimeNano(i), timeNanoVector.get(i), "Time nano mismatch at index " + i);
         }
 
         // Validate duration (seconds)
@@ -907,7 +1046,9 @@ public class DatabricksArrowPatchReaderWriterTest {
           Duration durationValue = durationVector.getObject(i);
           assertNotNull(durationValue, "Duration should not be null at index " + i);
           assertEquals(
-              getDurationSec(i), durationValue.getSeconds(), "Duration mismatch at index " + i);
+              getDurationMicroseconds(i),
+              durationValue.getNano() / (1000),
+              "Duration mismatch at index " + i);
         }
 
         // Validate interval year-month
@@ -933,7 +1074,41 @@ public class DatabricksArrowPatchReaderWriterTest {
               holder.milliseconds,
               "Interval milliseconds mismatch at index " + i);
         }
+
+        // Validate interval month-day-nano
+        if (i % 2 == 0) {
+          assertTrue(
+              intervalMonthDayNanoVector.isNull(i),
+              "Interval month-day-nano should be null at index " + i);
+        } else {
+          PeriodDuration value = intervalMonthDayNanoVector.getObject(i);
+          assertNotNull(value, "Interval month-day-nano should not be null at index " + i);
+          assertEquals(
+              getIntervalMonthDayNanoMonths(i),
+              value.getPeriod().toTotalMonths(),
+              "Interval months mismatch at index " + i);
+          assertEquals(
+              getIntervalMonthDayNanoDays(i),
+              value.getPeriod().getDays(),
+              "Interval days mismatch at index " + i);
+          assertEquals(
+              getIntervalMonthDayNanoNanos(i),
+              value.getDuration().toNanos(),
+              "Interval nanoseconds mismatch at index " + i);
+        }
       }
+    }
+
+    private int getIntervalMonthDayNanoMonths(int index) {
+      return index % 12;
+    }
+
+    private int getIntervalMonthDayNanoDays(int index) {
+      return index % 30;
+    }
+
+    private long getIntervalMonthDayNanoNanos(int index) {
+      return ((long) index * 1_000_000_000L) % 86_400_000_000_000L;
     }
   }
 
@@ -1178,21 +1353,16 @@ public class DatabricksArrowPatchReaderWriterTest {
               DecimalVector.class);
       DateDayVector structDateVector =
           structVector.addOrGet(
-              "s_date",
-              FieldType.nullable(new ArrowType.Date(org.apache.arrow.vector.types.DateUnit.DAY)),
-              DateDayVector.class);
+              "s_date", FieldType.nullable(new ArrowType.Date(DateUnit.DAY)), DateDayVector.class);
       TimeStampMilliTZVector structTimestampVector =
           structVector.addOrGet(
               "s_timestamp",
-              FieldType.nullable(
-                  new ArrowType.Timestamp(
-                      org.apache.arrow.vector.types.TimeUnit.MILLISECOND, "UTC")),
+              FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC")),
               TimeStampMilliTZVector.class);
       DurationVector structDurationVector =
           structVector.addOrGet(
               "s_duration",
-              FieldType.nullable(
-                  new ArrowType.Duration(org.apache.arrow.vector.types.TimeUnit.SECOND)),
+              FieldType.nullable(new ArrowType.Duration(TimeUnit.SECOND)),
               DurationVector.class);
       IntervalYearVector structIntervalVector =
           structVector.addOrGet(
@@ -1233,7 +1403,7 @@ public class DatabricksArrowPatchReaderWriterTest {
           structLongVector.set(i, getSignedLong(i));
           structFloatVector.set(i, getFloat(i));
           structDoubleVector.set(i, getDouble(i));
-          structDecimalVector.set(i, getDecimal(i));
+          structDecimalVector.set(i, getDecimal(i, structDecimalVector.getScale()));
           structDateVector.set(i, getDateDay(i));
           structTimestampVector.set(i, getTimestampMilli(i));
           structDurationVector.set(i, getDurationSec(i));
@@ -1299,7 +1469,9 @@ public class DatabricksArrowPatchReaderWriterTest {
           // Validate decimal
           BigDecimal decimalValue = (BigDecimal) structMap.get("s_decimal");
           assertEquals(
-              getDecimal(i), decimalValue.longValue(), "Struct decimal mismatch at index " + i);
+              getDecimal(i, decimalValue.scale()),
+              decimalValue,
+              "Struct decimal mismatch at index " + i);
 
           // Validate date
           assertEquals(
@@ -1376,15 +1548,10 @@ public class DatabricksArrowPatchReaderWriterTest {
                   null),
               new Field(
                   "s_timestamp",
-                  FieldType.nullable(
-                      new ArrowType.Timestamp(
-                          org.apache.arrow.vector.types.TimeUnit.MILLISECOND, "UTC")),
+                  FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC")),
                   null),
               new Field(
-                  "s_duration",
-                  FieldType.nullable(
-                      new ArrowType.Duration(org.apache.arrow.vector.types.TimeUnit.SECOND)),
-                  null),
+                  "s_duration", FieldType.nullable(new ArrowType.Duration(TimeUnit.SECOND)), null),
               new Field(
                   "s_interval",
                   FieldType.nullable(new ArrowType.Interval(IntervalUnit.YEAR_MONTH)),
@@ -1416,6 +1583,8 @@ public class DatabricksArrowPatchReaderWriterTest {
     private final Field mapStringListField;
     private final Schema schema;
     private final int VAR_BINARY_MAX_LENGTH = 32;
+    private final int DECIMAL_PRECISION = 16;
+    private final int DECIMAL_SCALE = 0;
 
     TestMapTypes() {
       mapStringIntField = newMapStringIntField();
@@ -1615,7 +1784,7 @@ public class DatabricksArrowPatchReaderWriterTest {
                 for (int j = 0; j < mapSize; j++) {
                   structVector.setIndexDefined(start + j);
                   keyVector.set(start + j, getMapStringKey(i, j).getBytes(StandardCharsets.UTF_8));
-                  valueVector.set(start + j, getDecimal(i * 10 + j));
+                  valueVector.set(start + j, getDecimal(i * 10 + j, valueVector.getScale()));
                 }
                 mapVector.endValue(i, mapSize);
               }
@@ -1652,9 +1821,7 @@ public class DatabricksArrowPatchReaderWriterTest {
             TimeStampMilliTZVector valueVector =
                 structVector.addOrGet(
                     "value",
-                    FieldType.nullable(
-                        new ArrowType.Timestamp(
-                            org.apache.arrow.vector.types.TimeUnit.MILLISECOND, "UTC")),
+                    FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC")),
                     TimeStampMilliTZVector.class);
             valueVector.allocateNew(maxMapEntries);
             for (int i = 0; i < batchSize; i++) {
@@ -1678,8 +1845,7 @@ public class DatabricksArrowPatchReaderWriterTest {
             DurationVector valueVector =
                 structVector.addOrGet(
                     "value",
-                    FieldType.nullable(
-                        new ArrowType.Duration(org.apache.arrow.vector.types.TimeUnit.SECOND)),
+                    FieldType.nullable(new ArrowType.Duration(TimeUnit.SECOND)),
                     DurationVector.class);
             valueVector.allocateNew(maxMapEntries);
             for (int i = 0; i < batchSize; i++) {
@@ -1910,8 +2076,8 @@ public class DatabricksArrowPatchReaderWriterTest {
                 break;
               case "decimal":
                 assertEquals(
-                    getDecimal(i * 10 + j),
-                    ((BigDecimal) value).longValue(),
+                    getDecimal(i * 10 + j, DECIMAL_SCALE),
+                    value,
                     "Map decimal value mismatch at index " + i + "[" + j + "]");
                 break;
               case "date":
@@ -2041,7 +2207,10 @@ public class DatabricksArrowPatchReaderWriterTest {
                   Arrays.asList(
                       new Field("key", FieldType.notNullable(new ArrowType.Utf8()), null),
                       new Field(
-                          "value", FieldType.nullable(new ArrowType.Decimal(16, 0, 128)), null)))));
+                          "value",
+                          FieldType.nullable(
+                              new ArrowType.Decimal(DECIMAL_PRECISION, DECIMAL_SCALE, 128)),
+                          null)))));
     }
 
     private Field newMapStringDateField() {
@@ -2073,9 +2242,7 @@ public class DatabricksArrowPatchReaderWriterTest {
                       new Field("key", FieldType.notNullable(new ArrowType.Utf8()), null),
                       new Field(
                           "value",
-                          FieldType.nullable(
-                              new ArrowType.Timestamp(
-                                  org.apache.arrow.vector.types.TimeUnit.MILLISECOND, "UTC")),
+                          FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC")),
                           null)))));
     }
 
@@ -2091,9 +2258,7 @@ public class DatabricksArrowPatchReaderWriterTest {
                       new Field("key", FieldType.notNullable(new ArrowType.Utf8()), null),
                       new Field(
                           "value",
-                          FieldType.nullable(
-                              new ArrowType.Duration(
-                                  org.apache.arrow.vector.types.TimeUnit.SECOND)),
+                          FieldType.nullable(new ArrowType.Duration(TimeUnit.SECOND)),
                           null)))));
     }
 
@@ -2282,6 +2447,8 @@ public class DatabricksArrowPatchReaderWriterTest {
     private final Field unionField;
     private final Schema schema;
     private final int VAR_BINARY_LENGTH = 64;
+    private final int DECIMAL_PRECISION = 16;
+    private final int DECIMAL_SCALE = 0;
 
     TestUnionTypes() {
       unionField = newUnionField();
@@ -2344,7 +2511,7 @@ public class DatabricksArrowPatchReaderWriterTest {
             unionDoubleVector.setSafe(offset, getDouble(i));
             break;
           case 4: // Decimal
-            unionDecimalVector.setSafe(offset, getDecimal(i));
+            unionDecimalVector.setSafe(offset, getDecimal(i, unionDecimalVector.getScale()));
             break;
           case 5: // Date
             unionDateVector.setSafe(offset, getDateDay(i));
@@ -2407,9 +2574,7 @@ public class DatabricksArrowPatchReaderWriterTest {
             break;
           case 4: // Decimal
             assertEquals(
-                getDecimal(i),
-                ((BigDecimal) unionValue).longValue(),
-                "Union decimal mismatch at index " + i);
+                getDecimal(i, DECIMAL_SCALE), unionValue, "Union decimal mismatch at index " + i);
             break;
           case 5: // Date
             assertEquals(
@@ -2467,7 +2632,10 @@ public class DatabricksArrowPatchReaderWriterTest {
                   "u_double",
                   FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)),
                   null),
-              new Field("u_decimal", FieldType.nullable(new ArrowType.Decimal(16, 0, 128)), null),
+              new Field(
+                  "u_decimal",
+                  FieldType.nullable(new ArrowType.Decimal(DECIMAL_PRECISION, DECIMAL_SCALE, 128)),
+                  null),
               new Field(
                   "u_date",
                   FieldType.nullable(
@@ -2475,15 +2643,10 @@ public class DatabricksArrowPatchReaderWriterTest {
                   null),
               new Field(
                   "u_timestamp",
-                  FieldType.nullable(
-                      new ArrowType.Timestamp(
-                          org.apache.arrow.vector.types.TimeUnit.MILLISECOND, "UTC")),
+                  FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC")),
                   null),
               new Field(
-                  "u_duration",
-                  FieldType.nullable(
-                      new ArrowType.Duration(org.apache.arrow.vector.types.TimeUnit.SECOND)),
-                  null),
+                  "u_duration", FieldType.nullable(new ArrowType.Duration(TimeUnit.SECOND)), null),
               new Field(
                   "u_interval",
                   FieldType.nullable(new ArrowType.Interval(IntervalUnit.YEAR_MONTH)),
@@ -3289,36 +3452,42 @@ public class DatabricksArrowPatchReaderWriterTest {
     return index * Math.PI * (index % 3 == 0 ? -1 : 1);
   }
 
-  private long getDecimal(int index) {
-    return (long) index + Integer.MAX_VALUE * (index % 3 == 0 ? -1 : 1);
+  private BigDecimal getDecimal(int index, int scale) {
+    BigDecimal bigDecimal = new BigDecimal(index % 100 * (index % 3 == 0 ? -1 : 1));
+    return bigDecimal.setScale(scale, RoundingMode.HALF_DOWN);
   }
 
   private Field newDateDayField() {
-    return new Field(
-        "date-day",
-        FieldType.nullable(new ArrowType.Date(org.apache.arrow.vector.types.DateUnit.DAY)),
-        null);
+    return new Field("date-day", FieldType.nullable(new ArrowType.Date(DateUnit.DAY)), null);
   }
 
   private Field newTimestampMilliField() {
     return new Field(
         "timestamp-milli",
-        FieldType.nullable(
-            new ArrowType.Timestamp(org.apache.arrow.vector.types.TimeUnit.MILLISECOND, "UTC")),
+        FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC")),
+        null);
+  }
+
+  private Field newTimestampMicroField() {
+    return new Field(
+        "timestamp-micro",
+        FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MICROSECOND, "UTC")),
         null);
   }
 
   private Field newTimeSecField() {
-    return new Field(
-        "time-sec",
-        FieldType.nullable(new ArrowType.Time(org.apache.arrow.vector.types.TimeUnit.SECOND, 32)),
-        null);
+    return new Field("time-sec", FieldType.nullable(new ArrowType.Time(TimeUnit.SECOND, 32)), null);
   }
 
-  private Field newDurationSecField() {
+  private Field newTimeNanoField() {
     return new Field(
-        "duration-sec",
-        FieldType.nullable(new ArrowType.Duration(org.apache.arrow.vector.types.TimeUnit.SECOND)),
+        "time-nano", FieldType.nullable(new ArrowType.Time(TimeUnit.NANOSECOND, 64)), null);
+  }
+
+  private Field newDurationMicrosecondField() {
+    return new Field(
+        "duration-micro-sec",
+        FieldType.nullable(new ArrowType.Duration(TimeUnit.MICROSECOND)),
         null);
   }
 
@@ -3332,6 +3501,13 @@ public class DatabricksArrowPatchReaderWriterTest {
         "interval-day", FieldType.nullable(new ArrowType.Interval(IntervalUnit.DAY_TIME)), null);
   }
 
+  private Field newIntervalMonthDayNanoField() {
+    return new Field(
+        "interval-month-day-nano",
+        FieldType.nullable(new ArrowType.Interval(IntervalUnit.MONTH_DAY_NANO)),
+        null);
+  }
+
   private int getDateDay(int index) {
     return 18000 + (index % 10000);
   }
@@ -3340,12 +3516,24 @@ public class DatabricksArrowPatchReaderWriterTest {
     return 1577836800000L + ((long) index * 1000L);
   }
 
+  private long getTimestampMicro(int index) {
+    return getTimestampMilli(index) * 1000L;
+  }
+
   private int getTimeSec(int index) {
     return index % 86400;
   }
 
+  private long getTimeNano(int index) {
+    return (long) (index % 86400) * 1_000_000_000L;
+  }
+
   private long getDurationSec(int index) {
-    return (long) index * 3600L * (index % 3 == 0 ? -1 : 1);
+    return (long) index * 3600L;
+  }
+
+  private long getDurationMicroseconds(int index) {
+    return (long) index % 1000;
   }
 
   private int getIntervalYearMonth(int index) {
