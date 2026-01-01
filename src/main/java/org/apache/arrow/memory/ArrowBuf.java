@@ -14,6 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+// -------------------------------------------------------------------------
+// MODIFICATION NOTICE:
+// This file was modified by Databricks, Inc on 16-December-2025.
+// Description of changes:
+//        - Patched ArrowBuf to be non-final and extensible.
+//        - Patched ArrowBuf to remove dependency on BaseAllocator.
+// -------------------------------------------------------------------------
+
 package org.apache.arrow.memory;
 
 import static org.apache.arrow.memory.util.LargeMemoryUtil.checkedCastToInt;
