@@ -14,7 +14,36 @@
     <artifactId>databricks-jdbc-thin</artifactId>
     <version>3.1.0-arrow-patched-SNAPSHOT</version>
     <packaging>jar</packaging>
-    <name>Thin</name>
+    <name>Databricks JDBC jar.</name>
+    <url>https://github.com/databricks/databricks-jdbc</url>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>
+                https://github.com/databricks/databricks-jdbc/blob/main/LICENSE
+            </url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>Databricks JDBC Team</name>
+            <email>eng-oss-sql-driver@databricks.com</email>
+            <organization>Databricks</organization>
+            <organizationUrl>https://www.databricks.com</organizationUrl>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:https://github.com/databricks/databricks-jdbc.git
+        </connection>
+        <developerConnection>
+            scm:git:https://github.com/databricks/databricks-jdbc.git
+        </developerConnection>
+        <url>https://github.com/databricks/databricks-jdbc</url>
+    </scm>
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/databricks/databricks-jdbc/issues</url>
+    </issueManagement>
 
     <dependencies>
         <dependency>
@@ -26,6 +55,35 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.6.0</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>oss</flattenMode>
+                    <pomElements>
+                        <dependencies>expand</dependencies>
+                        <build>remove</build>
+                    </pomElements>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -53,7 +111,9 @@
                             <artifactSet>
                                 <includes>
                                     <include>org.apache.arrow:*</include>
-                                    <include>com.databricks:databricks-jdbc-core</include>
+                                    <include>
+                                        com.databricks:databricks-jdbc-core
+                                    </include>
                                 </includes>
                             </artifactSet>
                             <relocations>
