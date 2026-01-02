@@ -11,7 +11,7 @@
     </parent>
 
     <groupId>com.databricks</groupId>
-    <artifactId>databricks-jdbc-uber</artifactId>
+    <artifactId>databricks-jdbc</artifactId>
     <packaging>jar</packaging>
     <name>Uber</name>
     <description>
