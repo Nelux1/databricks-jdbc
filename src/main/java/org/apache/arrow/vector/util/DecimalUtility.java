@@ -14,6 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+// -------------------------------------------------------------------------
+// MODIFICATION NOTICE:
+// This file was modified by Databricks, Inc on 16-December-2025.
+// Description of changes: Patched method writeLongToArrowBuf to handle DatabricksArrowBuf.
+// -------------------------------------------------------------------------
+
 package org.apache.arrow.vector.util;
 
 import java.math.BigDecimal;
