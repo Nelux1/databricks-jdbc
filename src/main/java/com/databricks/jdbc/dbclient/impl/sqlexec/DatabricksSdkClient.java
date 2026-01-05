@@ -288,6 +288,12 @@ public class DatabricksSdkClient implements IDatabricksClient {
     if (responseState != StatementState.SUCCEEDED && responseState != StatementState.CLOSED) {
       handleFailedExecution(response, statementId, sql);
     }
+
+    if (responseState == StatementState.CLOSED && parentStatement != null) {
+      LOGGER.debug("Statement {} returned CLOSED status, marking statement as closed", statementId);
+      ((DatabricksStatement) parentStatement.getStatement()).markAsClosed();
+    }
+
     return new DatabricksResultSet(
         response.getStatus(),
         typedStatementId,
@@ -424,8 +430,9 @@ public class DatabricksSdkClient implements IDatabricksClient {
 
   @Override
   public ChunkLinkFetchResult getResultChunks(
-      StatementId typedStatementId, long chunkIndex, long rowOffset) throws DatabricksSQLException {
-    // SEA uses chunkIndex; rowOffset is ignored
+      StatementId typedStatementId, long chunkIndex, long chunkStartRowOffset)
+      throws DatabricksSQLException {
+    DatabricksThreadContextHolder.setStatementId(typedStatementId);
     String statementId = typedStatementId.toSQLExecStatementId();
     LOGGER.debug(
         "getResultChunks(statementId={}, chunkIndex={}) using SEA client", statementId, chunkIndex);
