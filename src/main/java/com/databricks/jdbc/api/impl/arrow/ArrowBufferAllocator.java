@@ -45,8 +45,6 @@ public class ArrowBufferAllocator {
    * @return an instance of the {@code BufferAllocator}.
    */
   public static BufferAllocator getBufferAllocator() {
-    // TODO reuse RootAllocators?
-    // TODO should this method be non-static.
     if (canCreateRootAllocator) {
       return new RootAllocator();
     } else {
