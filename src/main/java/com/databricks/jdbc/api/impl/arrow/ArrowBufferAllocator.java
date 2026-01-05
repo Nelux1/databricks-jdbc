@@ -26,9 +26,13 @@ public class ArrowBufferAllocator {
     try {
       rootAllocator = new RootAllocator();
     } catch (Throwable t) {
+            String message = t.getMessage();
+            if (message == null) {
+                message = t.getCause() != null ? t.getCause().getMessage() : "";
+              }
       LOGGER.info(
-          "Failed to create RootAllocator, will use DatabricksBufferAllocator as fallback: "
-              + t.getMessage());
+              "Failed to create RootAllocator, will use DatabricksBufferAllocator as fallback: " +
+                     message);
     }
 
     canCreateRootAllocator = rootAllocator != null;
@@ -45,8 +49,6 @@ public class ArrowBufferAllocator {
    * @return an instance of the {@code BufferAllocator}.
    */
   public static BufferAllocator getBufferAllocator() {
-    // TODO reuse RootAllocators?
-    // TODO should this method be non-static.
     if (canCreateRootAllocator) {
       return new RootAllocator();
     } else {
