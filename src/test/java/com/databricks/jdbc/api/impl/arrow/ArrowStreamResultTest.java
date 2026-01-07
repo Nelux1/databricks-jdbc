@@ -478,15 +478,14 @@ public class ArrowStreamResultTest {
 
   @Test
   public void testStreamingChunkProviderEnabledForSeaResult() throws Exception {
-    // Enable StreamingChunkProvider via connection property
+    // StreamingChunkProvider is enabled by default
     Properties props = new Properties();
-    props.setProperty("EnableStreamingChunkProvider", "1");
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(JDBC_URL, props);
 
     assertTrue(
         connectionContext.isStreamingChunkProviderEnabled(),
-        "StreamingChunkProvider should be enabled via property");
+        "StreamingChunkProvider should be enabled by default");
 
     DatabricksSession localSession = new DatabricksSession(connectionContext, mockedSdkClient);
 
@@ -518,14 +517,15 @@ public class ArrowStreamResultTest {
 
   @Test
   public void testStreamingChunkProviderDisabledUsesRemoteChunkProvider() throws Exception {
-    // Default properties - StreamingChunkProvider disabled
+    // Explicitly disable StreamingChunkProvider to use RemoteChunkProvider
     Properties props = new Properties();
+    props.setProperty("EnableStreamingChunkProvider", "0");
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(JDBC_URL, props);
 
     assertFalse(
         connectionContext.isStreamingChunkProviderEnabled(),
-        "StreamingChunkProvider should be disabled by default");
+        "StreamingChunkProvider should be disabled when explicitly set to 0");
 
     DatabricksSession localSession = new DatabricksSession(connectionContext, mockedSdkClient);
 

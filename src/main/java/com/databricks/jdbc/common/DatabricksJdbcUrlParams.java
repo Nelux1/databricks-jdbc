@@ -190,8 +190,8 @@ public enum DatabricksJdbcUrlParams {
       "EnableTokenFederation", "Enable token federation for authentication", "1"),
   ENABLE_STREAMING_CHUNK_PROVIDER(
       "EnableStreamingChunkProvider",
-      "Enable streaming chunk provider for result fetching (experimental)",
-      "0"),
+      "Enable streaming chunk provider for result fetching",
+      "1"),
   LINK_PREFETCH_WINDOW(
       "LinkPrefetchWindow",
       "Number of chunk links to prefetch ahead of consumption. "
