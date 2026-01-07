@@ -103,42 +103,31 @@ public class ArrowStreamResult implements IExecutionResult {
 
     IDatabricksConnectionContext connectionContext = session.getConnectionContext();
 
-    if (connectionContext.isStreamingChunkProviderEnabled()) {
-      LOGGER.info(
-          "Using StreamingChunkProvider for statementId: {}", statementId.toSQLExecStatementId());
+    LOGGER.info(
+        "Using StreamingChunkProvider for statementId: {}", statementId.toSQLExecStatementId());
 
-      ChunkLinkFetcher linkFetcher = new SeaChunkLinkFetcher(session, statementId);
-      CompressionCodec compressionCodec = resultManifest.getResultCompression();
-      int maxChunksInMemory = connectionContext.getCloudFetchThreadPoolSize();
-      int linkPrefetchWindow = connectionContext.getLinkPrefetchWindow();
-      int chunkReadyTimeoutSeconds = connectionContext.getChunkReadyTimeoutSeconds();
-      double cloudFetchSpeedThreshold = connectionContext.getCloudFetchSpeedThreshold();
+    ChunkLinkFetcher linkFetcher = new SeaChunkLinkFetcher(session, statementId);
+    CompressionCodec compressionCodec = resultManifest.getResultCompression();
+    int maxChunksInMemory = connectionContext.getCloudFetchThreadPoolSize();
+    int linkPrefetchWindow = connectionContext.getLinkPrefetchWindow();
+    int chunkReadyTimeoutSeconds = connectionContext.getChunkReadyTimeoutSeconds();
+    double cloudFetchSpeedThreshold = connectionContext.getCloudFetchSpeedThreshold();
 
-      // Convert ExternalLinks to ChunkLinkFetchResult for the provider
-      ChunkLinkFetchResult initialLinks =
-          convertToChunkLinkFetchResult(
-              resultData.getExternalLinks(), resultManifest.getTotalChunkCount());
+    // Convert ExternalLinks to ChunkLinkFetchResult for the provider
+    ChunkLinkFetchResult initialLinks =
+        convertToChunkLinkFetchResult(
+            resultData.getExternalLinks(), resultManifest.getTotalChunkCount());
 
-      return new StreamingChunkProvider(
-          linkFetcher,
-          httpClient,
-          compressionCodec,
-          statementId,
-          maxChunksInMemory,
-          linkPrefetchWindow,
-          chunkReadyTimeoutSeconds,
-          cloudFetchSpeedThreshold,
-          initialLinks);
-    } else {
-      // Use the original RemoteChunkProvider
-      return new RemoteChunkProvider(
-          statementId,
-          resultManifest,
-          resultData,
-          session,
-          httpClient,
-          connectionContext.getCloudFetchThreadPoolSize());
-    }
+    return new StreamingChunkProvider(
+        linkFetcher,
+        httpClient,
+        compressionCodec,
+        statementId,
+        maxChunksInMemory,
+        linkPrefetchWindow,
+        chunkReadyTimeoutSeconds,
+        cloudFetchSpeedThreshold,
+        initialLinks);
   }
 
   public ArrowStreamResult(
@@ -193,39 +182,28 @@ public class ArrowStreamResult implements IExecutionResult {
     CompressionCodec compressionCodec =
         CompressionCodec.getCompressionMapping(resultsResp.getResultSetMetadata());
 
-    if (connectionContext.isStreamingChunkProviderEnabled()) {
-      StatementId statementId = parentStatement.getStatementId();
-      LOGGER.info("Using StreamingChunkProvider for Thrift statementId: {}", statementId);
+    StatementId statementId = parentStatement.getStatementId();
+    LOGGER.info("Using StreamingChunkProvider for Thrift statementId: {}", statementId);
 
-      ChunkLinkFetcher linkFetcher = new ThriftChunkLinkFetcher(session, statementId);
-      int maxChunksInMemory = connectionContext.getCloudFetchThreadPoolSize();
-      int linkPrefetchWindow = connectionContext.getLinkPrefetchWindow();
-      int chunkReadyTimeoutSeconds = connectionContext.getChunkReadyTimeoutSeconds();
-      double cloudFetchSpeedThreshold = connectionContext.getCloudFetchSpeedThreshold();
+    ChunkLinkFetcher linkFetcher = new ThriftChunkLinkFetcher(session, statementId);
+    int maxChunksInMemory = connectionContext.getCloudFetchThreadPoolSize();
+    int linkPrefetchWindow = connectionContext.getLinkPrefetchWindow();
+    int chunkReadyTimeoutSeconds = connectionContext.getChunkReadyTimeoutSeconds();
+    double cloudFetchSpeedThreshold = connectionContext.getCloudFetchSpeedThreshold();
 
-      // Convert initial Thrift links to ChunkLinkFetchResult
-      ChunkLinkFetchResult initialLinks = convertThriftLinksToChunkLinkFetchResult(resultsResp);
+    // Convert initial Thrift links to ChunkLinkFetchResult
+    ChunkLinkFetchResult initialLinks = convertThriftLinksToChunkLinkFetchResult(resultsResp);
 
-      return new StreamingChunkProvider(
-          linkFetcher,
-          httpClient,
-          compressionCodec,
-          statementId,
-          maxChunksInMemory,
-          linkPrefetchWindow,
-          chunkReadyTimeoutSeconds,
-          cloudFetchSpeedThreshold,
-          initialLinks);
-    } else {
-      // Use the original RemoteChunkProvider
-      return new RemoteChunkProvider(
-          parentStatement,
-          resultsResp,
-          session,
-          httpClient,
-          connectionContext.getCloudFetchThreadPoolSize(),
-          compressionCodec);
-    }
+    return new StreamingChunkProvider(
+        linkFetcher,
+        httpClient,
+        compressionCodec,
+        statementId,
+        maxChunksInMemory,
+        linkPrefetchWindow,
+        chunkReadyTimeoutSeconds,
+        cloudFetchSpeedThreshold,
+        initialLinks);
   }
 
   public List<String> getArrowMetadata() throws DatabricksSQLException {

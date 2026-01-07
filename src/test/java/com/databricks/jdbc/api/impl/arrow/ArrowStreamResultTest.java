@@ -477,15 +477,11 @@ public class ArrowStreamResultTest {
   // ==================== StreamingChunkProvider Instantiation Tests ====================
 
   @Test
-  public void testStreamingChunkProviderEnabledForSeaResult() throws Exception {
-    // StreamingChunkProvider is enabled by default
+  public void testStreamingChunkProviderForSeaResult() throws Exception {
+    // StreamingChunkProvider is always used for SEA results
     Properties props = new Properties();
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(JDBC_URL, props);
-
-    assertTrue(
-        connectionContext.isStreamingChunkProviderEnabled(),
-        "StreamingChunkProvider should be enabled by default");
 
     DatabricksSession localSession = new DatabricksSession(connectionContext, mockedSdkClient);
 
@@ -516,55 +512,11 @@ public class ArrowStreamResultTest {
   }
 
   @Test
-  public void testStreamingChunkProviderDisabledUsesRemoteChunkProvider() throws Exception {
-    // Explicitly disable StreamingChunkProvider to use RemoteChunkProvider
+  public void testStreamingChunkProviderForThriftResult() throws Exception {
+    // StreamingChunkProvider is always used for Thrift results
     Properties props = new Properties();
-    props.setProperty("EnableStreamingChunkProvider", "0");
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(JDBC_URL, props);
-
-    assertFalse(
-        connectionContext.isStreamingChunkProviderEnabled(),
-        "StreamingChunkProvider should be disabled when explicitly set to 0");
-
-    DatabricksSession localSession = new DatabricksSession(connectionContext, mockedSdkClient);
-
-    ResultManifest resultManifest =
-        new ResultManifest()
-            .setTotalChunkCount(1L)
-            .setTotalRowCount(110L)
-            .setTotalByteCount(1000L)
-            .setResultCompression(CompressionCodec.NONE)
-            .setChunks(this.chunkInfos.subList(0, 1))
-            .setSchema(new ResultSchema().setColumns(new ArrayList<>()).setColumnCount(0L));
-
-    ResultData localResultData = new ResultData().setExternalLinks(getChunkLinks(0L, 0L, true));
-
-    setupMockResponse();
-    when(mockHttpClient.execute(isA(HttpUriRequest.class), eq(true))).thenReturn(httpResponse);
-
-    ArrowStreamResult result =
-        new ArrowStreamResult(
-            resultManifest, localResultData, STATEMENT_ID, localSession, mockHttpClient);
-
-    // Verify result was created successfully with RemoteChunkProvider
-    assertNotNull(result);
-    assertTrue(result.hasNext(), "Result should have data");
-    assertTrue(result.next());
-    assertDoesNotThrow(result::close);
-  }
-
-  @Test
-  public void testStreamingChunkProviderEnabledForThriftResult() throws Exception {
-    // Enable StreamingChunkProvider via connection property
-    Properties props = new Properties();
-    props.setProperty("EnableStreamingChunkProvider", "1");
-    IDatabricksConnectionContext connectionContext =
-        DatabricksConnectionContextFactory.create(JDBC_URL, props);
-
-    assertTrue(
-        connectionContext.isStreamingChunkProviderEnabled(),
-        "StreamingChunkProvider should be enabled via property");
 
     when(session.getConnectionContext()).thenReturn(connectionContext);
     when(metadataResp.getSchema()).thenReturn(TEST_TABLE_SCHEMA);
@@ -617,13 +569,9 @@ public class ArrowStreamResultTest {
 
   @Test
   public void testSeaEmptyLinksWithZeroChunkCountReturnsEndOfStream() throws Exception {
-    // Enable StreamingChunkProvider
     Properties props = new Properties();
-    props.setProperty("EnableStreamingChunkProvider", "1");
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(JDBC_URL, props);
-
-    assertTrue(connectionContext.isStreamingChunkProviderEnabled());
 
     DatabricksSession localSession = new DatabricksSession(connectionContext, mockedSdkClient);
 
@@ -649,13 +597,9 @@ public class ArrowStreamResultTest {
 
   @Test
   public void testSeaNullLinksWithZeroChunkCountReturnsEndOfStream() throws Exception {
-    // Enable StreamingChunkProvider
     Properties props = new Properties();
-    props.setProperty("EnableStreamingChunkProvider", "1");
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(JDBC_URL, props);
-
-    assertTrue(connectionContext.isStreamingChunkProviderEnabled());
 
     DatabricksSession localSession = new DatabricksSession(connectionContext, mockedSdkClient);
 

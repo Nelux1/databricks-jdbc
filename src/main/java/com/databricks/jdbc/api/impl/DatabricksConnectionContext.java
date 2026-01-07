@@ -1194,11 +1194,6 @@ public class DatabricksConnectionContext implements IDatabricksConnectionContext
   }
 
   @Override
-  public boolean isStreamingChunkProviderEnabled() {
-    return getParameter(DatabricksJdbcUrlParams.ENABLE_STREAMING_CHUNK_PROVIDER).equals("1");
-  }
-
-  @Override
   public int getLinkPrefetchWindow() {
     return Integer.parseInt(getParameter(DatabricksJdbcUrlParams.LINK_PREFETCH_WINDOW));
   }

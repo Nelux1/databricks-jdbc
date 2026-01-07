@@ -423,9 +423,6 @@ public interface IDatabricksConnectionContext {
   /** Returns whether token federation is enabled for authentication. */
   boolean isTokenFederationEnabled();
 
-  /** Returns whether streaming chunk provider is enabled for result fetching. */
-  boolean isStreamingChunkProviderEnabled();
-
   /**
    * Returns the number of chunk links to prefetch ahead of consumption.
    *
