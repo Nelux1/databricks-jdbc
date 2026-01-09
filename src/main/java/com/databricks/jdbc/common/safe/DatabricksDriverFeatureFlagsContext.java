@@ -90,6 +90,14 @@ public class DatabricksDriverFeatureFlagsContext {
       IDatabricksHttpClient httpClient =
           DatabricksHttpClientFactory.getInstance().getClient(connectionContext);
       HttpGet request = new HttpGet(featureFlagEndpoint);
+
+      // Set custom User-Agent for connector service (includes custom user agent without client
+      // type)
+      String userAgent =
+          com.databricks.jdbc.common.util.UserAgentManager.buildUserAgentForConnectorService(
+              connectionContext);
+      request.setHeader("User-Agent", userAgent);
+
       DatabricksClientConfiguratorManager.getInstance()
           .getConfigurator(connectionContext)
           .getDatabricksConfig()

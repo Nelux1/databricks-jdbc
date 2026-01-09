@@ -116,10 +116,8 @@ public class UserAgentManagerTest {
 
   @Test
   void testCustomUserAgentIncludedBeforeClientTypeEvaluation() throws DatabricksSQLException {
-    // This test verifies that custom user agent is set BEFORE getClientType() is called,
-    // ensuring the custom user agent is included in connector service feature flags requests.
-    // The fix reordered UserAgentManager.setUserAgent() to set custom user agent before
-    // calling getClientUserAgent(), which triggers getClientType() and feature flags fetch.
+    // This test verifies that custom user agent is included in connector service requests
+    // and maintains proper order: base -> client type -> custom
 
     // Create connection context with custom user agent entry (use URL without existing UA)
     String jdbcUrlWithCustomUA =
@@ -127,7 +125,7 @@ public class UserAgentManagerTest {
     IDatabricksConnectionContext connectionContext =
         DatabricksConnectionContextFactory.create(jdbcUrlWithCustomUA, new Properties());
 
-    // Call setUserAgent - this should set custom user agent BEFORE getClientType is evaluated
+    // Call setUserAgent
     UserAgentManager.setUserAgent(connectionContext);
 
     // Get the final user agent string
@@ -152,6 +150,16 @@ public class UserAgentManagerTest {
     assertTrue(
         userAgent.contains("databricks-jdbc-http"),
         "JDBC HTTP client identifier should be present: " + userAgent);
+
+    // Verify correct order: client type should come BEFORE custom user agent
+    int clientTypeIndex =
+        userAgent.contains("Java/THttpClient")
+            ? userAgent.indexOf("Java/THttpClient")
+            : userAgent.indexOf("Java/SQLExecHttpClient");
+    int customUAIndex = userAgent.indexOf("CustomTestApp/2.0.0");
+    assertTrue(
+        clientTypeIndex < customUAIndex,
+        "Client type should appear before custom user agent. Order: " + userAgent);
   }
 
   @Test

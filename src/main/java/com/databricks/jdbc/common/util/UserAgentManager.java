@@ -26,7 +26,10 @@ public class UserAgentManager {
     // Set the base product
     UserAgent.withProduct(DEFAULT_USER_AGENT, DriverUtil.getDriverVersion());
 
-    // Set custom user agent FIRST (before calling getClientUserAgent which triggers getClientType)
+    // Set client info (this may trigger getClientType which fetches feature flags)
+    UserAgent.withOtherInfo(CLIENT_USER_AGENT_PREFIX, connectionContext.getClientUserAgent());
+
+    // Set custom user agent (maintains proper order: base -> client type -> custom)
     if (connectionContext.getCustomerUserAgent() != null) {
       try {
         String decodedUA =
@@ -44,9 +47,57 @@ public class UserAgentManager {
             e);
       }
     }
+  }
 
-    // Now set client info (this may trigger getClientType which fetches feature flags)
-    UserAgent.withOtherInfo(CLIENT_USER_AGENT_PREFIX, connectionContext.getClientUserAgent());
+  /**
+   * Build user agent string for connector service requests (without client type to avoid circular
+   * dependency). This is used specifically for feature flags requests since client type is not yet
+   * determined.
+   *
+   * @param connectionContext The connection context.
+   * @return User agent string with format: "DatabricksJDBCDriverOSS/version databricks-jdbc-http
+   *     jvm/version os/name [CustomApp/version]"
+   */
+  public static String buildUserAgentForConnectorService(
+      IDatabricksConnectionContext connectionContext) {
+    StringBuilder userAgent = new StringBuilder();
+
+    // Base product: DatabricksJDBCDriverOSS/version
+    userAgent.append(DEFAULT_USER_AGENT).append("/").append(DriverUtil.getDriverVersion());
+
+    // JDBC HTTP identifier
+    userAgent.append(" ").append(JDBC_HTTP_USER_AGENT);
+
+    // JVM version
+    userAgent
+        .append(" jvm/")
+        .append(System.getProperty("java.version", "unknown").replace(" ", "_"));
+
+    // OS name
+    userAgent.append(" os/").append(System.getProperty("os.name", "unknown").replace(" ", "_"));
+
+    // Custom user agent (if provided)
+    if (connectionContext.getCustomerUserAgent() != null) {
+      try {
+        String decodedUA =
+            URLDecoder.decode(connectionContext.getCustomerUserAgent(), StandardCharsets.UTF_8);
+        int i = decodedUA.indexOf('/');
+        String customerName = (i < 0) ? decodedUA : decodedUA.substring(0, i);
+        String customerVersion = (i < 0) ? VERSION_FILLER : decodedUA.substring(i + 1);
+        userAgent
+            .append(" ")
+            .append(customerName)
+            .append("/")
+            .append(UserAgent.sanitize(customerVersion));
+      } catch (Exception e) {
+        LOGGER.debug(
+            "Failed to include customer userAgent entry {} in connector service UA, Error {}",
+            connectionContext.getCustomerUserAgent(),
+            e);
+      }
+    }
+
+    return userAgent.toString();
   }
 
   /** Gets the user agent string for Databricks Driver HTTP Client. */
