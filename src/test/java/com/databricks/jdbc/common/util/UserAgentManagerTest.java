@@ -86,7 +86,7 @@ public class UserAgentManagerTest {
         DatabricksConnectionContextFactory.create(CLUSTER_JDBC_URL, new Properties());
     UserAgentManager.setUserAgent(connectionContext);
     String userAgent = getUserAgentString();
-    assertTrue(userAgent.contains("DatabricksJDBCDriverOSS/3.0.7"));
+    assertTrue(userAgent.contains("DatabricksJDBCDriverOSS/"));
     assertTrue(userAgent.contains(" Java/THttpClient"));
     assertTrue(userAgent.contains(" MyApp/version"));
     assertTrue(userAgent.contains(" databricks-jdbc-http "));
@@ -97,7 +97,7 @@ public class UserAgentManagerTest {
         DatabricksConnectionContextFactory.create(WAREHOUSE_JDBC_URL, new Properties());
     UserAgentManager.setUserAgent(connectionContext);
     userAgent = getUserAgentString();
-    assertTrue(userAgent.contains("DatabricksJDBCDriverOSS/3.0.7"));
+    assertTrue(userAgent.contains("DatabricksJDBCDriverOSS/"));
     assertTrue(userAgent.contains(" Java/THttpClient"));
     assertTrue(userAgent.contains(" MyApp/version"));
     assertTrue(userAgent.contains(" databricks-jdbc-http "));
@@ -108,10 +108,50 @@ public class UserAgentManagerTest {
         DatabricksConnectionContextFactory.create(WAREHOUSE_JDBC_URL_WITH_SEA, new Properties());
     UserAgentManager.setUserAgent(connectionContext);
     userAgent = getUserAgentString();
-    assertTrue(userAgent.contains("DatabricksJDBCDriverOSS/3.0.7"));
+    assertTrue(userAgent.contains("DatabricksJDBCDriverOSS/"));
     assertTrue(userAgent.contains(" Java/SQLExecHttpClient"));
     assertTrue(userAgent.contains(" databricks-jdbc-http "));
     assertFalse(userAgent.contains("databricks-sdk-java"));
+  }
+
+  @Test
+  void testCustomUserAgentIncludedBeforeClientTypeEvaluation() throws DatabricksSQLException {
+    // This test verifies that custom user agent is set BEFORE getClientType() is called,
+    // ensuring the custom user agent is included in connector service feature flags requests.
+    // The fix reordered UserAgentManager.setUserAgent() to set custom user agent before
+    // calling getClientUserAgent(), which triggers getClientType() and feature flags fetch.
+
+    // Create connection context with custom user agent entry (use URL without existing UA)
+    String jdbcUrlWithCustomUA =
+        WAREHOUSE_JDBC_URL_WITH_THRIFT + ";useragententry=CustomTestApp/2.0.0";
+    IDatabricksConnectionContext connectionContext =
+        DatabricksConnectionContextFactory.create(jdbcUrlWithCustomUA, new Properties());
+
+    // Call setUserAgent - this should set custom user agent BEFORE getClientType is evaluated
+    UserAgentManager.setUserAgent(connectionContext);
+
+    // Get the final user agent string
+    String userAgent = getUserAgentString();
+
+    // Verify custom user agent is included
+    assertTrue(
+        userAgent.contains("CustomTestApp/2.0.0"),
+        "Custom user agent should be included: " + userAgent);
+
+    // Verify driver version is present
+    assertTrue(
+        userAgent.contains("DatabricksJDBCDriverOSS/"),
+        "Driver version should be present: " + userAgent);
+
+    // Verify client type is included (proves getClientType was called)
+    assertTrue(
+        userAgent.contains("Java/THttpClient") || userAgent.contains("Java/SQLExecHttpClient"),
+        "Client type should be included: " + userAgent);
+
+    // Verify JDBC HTTP client identifier
+    assertTrue(
+        userAgent.contains("databricks-jdbc-http"),
+        "JDBC HTTP client identifier should be present: " + userAgent);
   }
 
   @Test

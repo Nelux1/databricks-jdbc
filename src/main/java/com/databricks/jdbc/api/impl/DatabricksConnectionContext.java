@@ -456,12 +456,6 @@ public class DatabricksConnectionContext implements IDatabricksConnectionContext
     // Now, user has not provided a value, we will decide based on our checks
     // Check if circuit breaker is open due to recent 429 rate limit failures
     if (SeaCircuitBreakerManager.isCircuitOpen()) {
-      long remainingMs = SeaCircuitBreakerManager.getTimeRemainingMs();
-      LOGGER.info(
-          "SEA circuit breaker is OPEN due to recent 429 rate limit failures. "
-              + "Using THRIFT client. Circuit will close in {} ({}ms)",
-          SeaCircuitBreakerManager.getTimeRemainingFormatted(),
-          remainingMs);
       return DatabricksClientType.THRIFT;
     }
     // Check if Arrow is disabled - Thrift is required for inline mode

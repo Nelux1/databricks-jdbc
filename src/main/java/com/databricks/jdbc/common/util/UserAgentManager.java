@@ -23,27 +23,30 @@ public class UserAgentManager {
    * @param connectionContext The connection context.
    */
   public static void setUserAgent(IDatabricksConnectionContext connectionContext) {
-    // Set the base product and client info
+    // Set the base product
     UserAgent.withProduct(DEFAULT_USER_AGENT, DriverUtil.getDriverVersion());
+
+    // Set custom user agent FIRST (before calling getClientUserAgent which triggers getClientType)
+    if (connectionContext.getCustomerUserAgent() != null) {
+      try {
+        String decodedUA =
+            URLDecoder.decode(
+                connectionContext.getCustomerUserAgent(),
+                StandardCharsets.UTF_8); // This is for encoded userAgentString
+        int i = decodedUA.indexOf('/');
+        String customerName = (i < 0) ? decodedUA : decodedUA.substring(0, i);
+        String customerVersion = (i < 0) ? VERSION_FILLER : decodedUA.substring(i + 1);
+        UserAgent.withOtherInfo(customerName, UserAgent.sanitize(customerVersion));
+      } catch (Exception e) {
+        LOGGER.debug(
+            "Failed to set user agent for customer userAgent entry {}, Error {}",
+            connectionContext.getCustomerUserAgent(),
+            e);
+      }
+    }
+
+    // Now set client info (this may trigger getClientType which fetches feature flags)
     UserAgent.withOtherInfo(CLIENT_USER_AGENT_PREFIX, connectionContext.getClientUserAgent());
-    if (connectionContext.getCustomerUserAgent() == null) {
-      return;
-    }
-    try {
-      String decodedUA =
-          URLDecoder.decode(
-              connectionContext.getCustomerUserAgent(),
-              StandardCharsets.UTF_8); // This is for encoded userAgentString
-      int i = decodedUA.indexOf('/');
-      String customerName = (i < 0) ? decodedUA : decodedUA.substring(0, i);
-      String customerVersion = (i < 0) ? VERSION_FILLER : decodedUA.substring(i + 1);
-      UserAgent.withOtherInfo(customerName, UserAgent.sanitize(customerVersion));
-    } catch (Exception e) {
-      LOGGER.debug(
-          "Failed to set user agent for customer userAgent entry {}, Error {}",
-          connectionContext.getCustomerUserAgent(),
-          e);
-    }
   }
 
   /** Gets the user agent string for Databricks Driver HTTP Client. */
