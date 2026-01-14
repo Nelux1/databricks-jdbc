@@ -78,7 +78,7 @@ jobs:
 
       - name: Check Unit Tests
         shell: bash
-        run: mvn test -Dtest='!**/integration/**,!**/DatabricksDriverExamples.java,!**/ProxyTest.java,!**/LoggingTest.java,!**/SSLTest.java'
+        run: mvn -pl jdbc-core test -Dtest='!**/integration/**,!**/DatabricksDriverExamples.java,!**/ProxyTest.java,!**/LoggingTest.java,!**/SSLTest.java' -Dgroups='!Jvm17PlusAndArrowToNioReflectionDisabled'
 
       - name: Install xmllint
         if: runner.os == 'Linux'
@@ -90,7 +90,7 @@ jobs:
       - name: Extract codeCov percentage
         shell: bash
         run: |
-          COVERAGE_FILE="target/site/jacoco/jacoco.xml"
+          COVERAGE_FILE="jdbc-core/target/site/jacoco/jacoco.xml"
           COVERED=$(xmllint --xpath "string(//report/counter[@type='INSTRUCTION']/@covered)" "$COVERAGE_FILE")
           MISSED=$(xmllint --xpath "string(//report/counter[@type='INSTRUCTION']/@missed)" "$COVERAGE_FILE")
           TOTAL=$((COVERED + MISSED))

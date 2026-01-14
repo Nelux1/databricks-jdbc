@@ -46,6 +46,8 @@
     </repository>
   </distributionManagement>
   <properties>
+    <!-- Internal module - should not be deployed to Maven Central -->
+    <maven.deploy.skip>true</maven.deploy.skip>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <arrow.version>18.3.0</arrow.version>
@@ -488,6 +490,11 @@
             <exclude>**/EnvironmentVariables*</exclude>
             <exclude>**/model/**</exclude>
             <exclude>**/thrift/generated/**</exclude>
+
+            <!-- Exclude patched Arrow classes from coverage -->
+            <exclude>org/apache/arrow/memory/util/MemoryUtil*</exclude>
+            <exclude>org/apache/arrow/memory/ArrowBuf*</exclude>
+            <exclude>org/apache/arrow/vector/util/DecimalUtility*</exclude>
           </excludes>
         </configuration>
       </plugin>

@@ -16,6 +16,11 @@
   <name>Test Uber</name>
   <description>Test JDBC databricks driver uber jar.</description>
 
+  <properties>
+    <!-- Test module - should not be deployed to Maven Central -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.databricks</groupId>

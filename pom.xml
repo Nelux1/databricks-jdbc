@@ -46,6 +46,8 @@
     <maven-toolchains-plugin.version>3.2.0</maven-toolchains-plugin.version>
     <databricks-jdbc-version>3.1.0-arrow-patched-SNAPSHOT</databricks-jdbc-version>
     <junit.jupiter.version>5.9.2</junit.jupiter.version>
+    <!-- Parent POM should not be deployed to Maven Central -->
+    <maven.deploy.skip>true</maven.deploy.skip>
   </properties>
 
   <profiles>

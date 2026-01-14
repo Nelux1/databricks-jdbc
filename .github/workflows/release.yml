@@ -29,8 +29,9 @@ jobs:
 
       - name: Publish to the Maven Central Repository
         run: |
-          # Deploy main artifacts (uber JAR, sources, javadoc)
+          # Deploy only uber JAR (thin JAR handled by release-thin.yml)
           mvn -Prelease --batch-mode deploy \
+            -pl assembly-uber -am \
             -Dnvd.api.key=${{ secrets.NVD_API_KEY }} \
             -Dossindex.username=${{ secrets.OSSINDEX_USERNAME }} \
             -Dossindex.password=${{ secrets.OSSINDEX_PASSWORD }}
@@ -43,4 +44,4 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            files: target/*.jar
+            assembly-uber/target/databricks-jdbc-*.jar
