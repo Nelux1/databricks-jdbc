@@ -34,3 +34,7 @@ jobs:
 
       - name: Run Unit Tests
         run: mvn -pl jdbc-core clean test -Dgroups='!Jvm17PlusAndArrowToNioReflectionDisabled'
+
+      - name: Check Arrow Memory Tests
+        shell: bash
+        run: mvn -Plow-memory -pl jdbc-core test -Dtest='DatabricksArrowPatchMemoryUsageTest'
