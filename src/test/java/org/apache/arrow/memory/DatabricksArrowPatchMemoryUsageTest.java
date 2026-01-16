@@ -21,8 +21,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Test the patched allocator does not put the JVM into GC pressure and cause it to OOM
  * (OutOfMemoryError).
- *
- * TODO - add a mvn profile to run this test with low max heap size -Xmx100m.
  */
 public class DatabricksArrowPatchMemoryUsageTest {
   /** Path to an arrow chunk. */
