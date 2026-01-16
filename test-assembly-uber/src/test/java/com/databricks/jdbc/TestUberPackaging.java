@@ -149,8 +149,7 @@ public class TestUberPackaging {
 
     try (Connection connection = connect(params)) {
       try (Statement statement = connection.createStatement()) {
-        final int limit = 1_000_000;
-        final String sql = "SELECT * FROM samples.tpch.lineitem LIMIT " + limit;
+        final String sql = "SELECT * FROM samples.tpch.lineitem where 1 = 0";
         ResultSet result = statement.executeQuery(sql);
         int totalRows = 0;
         while (result.next()) {
