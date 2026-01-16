@@ -12,7 +12,6 @@
 
     <groupId>com.databricks</groupId>
     <artifactId>databricks-jdbc-thin</artifactId>
-    <version>3.1.0-arrow-patched-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>Databricks JDBC jar.</name>
     <url>https://github.com/databricks/databricks-jdbc</url>
