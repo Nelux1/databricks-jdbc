@@ -161,7 +161,7 @@ public class TestThinPackaging {
   private Connection connect(Map<String, Object> urlParams) throws SQLException {
     Properties props = new Properties();
     props.setProperty("user", getDatabricksUser());
-    props.setProperty("password", getDatabricksDogfoodToken());
+    props.setProperty("password", getDatabricksToken());
     for (Map.Entry<String, Object> entry : urlParams.entrySet()) {
       props.setProperty(entry.getKey(), entry.getValue().toString());
     }
@@ -173,26 +173,26 @@ public class TestThinPackaging {
 
   private String getDogfoodJDBCUrl() {
     String template =
-        "jdbc:databricks://%s/default;transportMode=http;ssl=1;AuthMech=3;httpPath=%s";
-    String host = getDatabricksDogfoodHost();
-    String httpPath = getDatabricksDogfoodHTTPPath();
+            "jdbc:databricks://%s/default;transportMode=http;ssl=1;AuthMech=3;httpPath=%s";
+    String host = getDatabricksHost();
+    String httpPath = getDatabricksHttpPath();
 
     return String.format(template, host, httpPath);
   }
 
-  private String getDatabricksDogfoodHTTPPath() {
-    return System.getenv("DATABRICKS_DOGFOOD_HTTP_PATH");
+  private String getDatabricksHttpPath() {
+    return System.getenv("DATABRICKS_HTTP_PATH");
   }
 
-  private String getDatabricksDogfoodHost() {
-    return System.getenv("DATABRICKS_DOGFOOD_HOST");
+  private String getDatabricksHost() {
+    return System.getenv("DATABRICKS_HOST");
   }
 
   private String getDatabricksUser() {
     return Optional.ofNullable(System.getenv("DATABRICKS_USER")).orElse("token");
   }
 
-  private String getDatabricksDogfoodToken() {
-    return System.getenv("DATABRICKS_DOGFOOD_TOKEN");
+  private String getDatabricksToken() {
+    return System.getenv("DATABRICKS_TOKEN");
   }
 }
