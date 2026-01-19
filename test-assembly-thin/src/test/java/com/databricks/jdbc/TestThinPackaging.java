@@ -173,7 +173,7 @@ public class TestThinPackaging {
 
   private String getDogfoodJDBCUrl() {
     String template =
-            "jdbc:databricks://%s/default;transportMode=http;ssl=1;AuthMech=3;httpPath=%s";
+        "jdbc:databricks://%s/default;transportMode=http;ssl=1;AuthMech=3;httpPath=%s";
     String host = getDatabricksHost();
     String httpPath = getDatabricksHttpPath();
 

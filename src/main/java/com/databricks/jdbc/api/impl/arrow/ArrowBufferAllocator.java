@@ -26,13 +26,13 @@ public class ArrowBufferAllocator {
     try {
       rootAllocator = new RootAllocator();
     } catch (Throwable t) {
-            String message = t.getMessage();
-            if (message == null) {
-                message = t.getCause() != null ? t.getCause().getMessage() : "";
-              }
+      String message = t.getMessage();
+      if (message == null) {
+        message = t.getCause() != null ? t.getCause().getMessage() : "";
+      }
       LOGGER.info(
-              "Failed to create RootAllocator, will use DatabricksBufferAllocator as fallback: " +
-                     message);
+          "Failed to create RootAllocator, will use DatabricksBufferAllocator as fallback: "
+              + message);
     }
 
     canCreateRootAllocator = rootAllocator != null;
