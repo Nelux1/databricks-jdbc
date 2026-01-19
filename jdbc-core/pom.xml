@@ -364,7 +364,7 @@
           </excludes>
           <argLine>
             @{argLine}
-            -Xmx4g
+            -Xmx5g
             --add-opens=java.base/java.nio=ALL-UNNAMED
             -Dnet.bytebuddy.experimental=true
           </argLine>
