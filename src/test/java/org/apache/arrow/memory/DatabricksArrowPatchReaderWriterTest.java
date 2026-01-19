@@ -88,7 +88,8 @@ public class DatabricksArrowPatchReaderWriterTest {
 
   /** Provide different buffer allocators. */
   private static Stream<Arguments> getBufferAllocators() {
-    int totalRows = 3_000_000; // A large enough value.
+    // Large enough value which fits within the heap space for tests.
+    int totalRows = (int) Math.pow(2, 19); // A large enough value.
     return Stream.of(
         Arguments.of(new RootAllocator(), new RootAllocator(), totalRows),
         Arguments.of(new RootAllocator(), new DatabricksBufferAllocator(), totalRows),
@@ -346,6 +347,7 @@ public class DatabricksArrowPatchReaderWriterTest {
     streamWriter.end();
     streamWriter.close();
     vectorSchemaRoot.close();
+    allocator.close();
 
     return byteArrayOutputStream.toByteArray();
   }
@@ -359,6 +361,8 @@ public class DatabricksArrowPatchReaderWriterTest {
         logger.info("Validating {} rows", root.getRowCount());
         dataTester.validateData(root);
       }
+    } finally {
+      allocator.close();
     }
   }
 
