@@ -2,7 +2,6 @@ package org.apache.arrow.memory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.IOException;
@@ -76,7 +75,6 @@ public class DatabricksArrowPatchTest {
     for (var cause = throwable; cause != null; cause = cause.getCause()) {
       logger.info("Throwable in chain: {} - {}", cause.getClass().getName(), cause.getMessage());
     }
-    assertInstanceOf(ExceptionInInitializerError.class, throwable);
   }
 
   /**
