@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [jdk-8]
+  workflow_dispatch:    # Allow manual trigger
 
 jobs:
   jdk8-test:

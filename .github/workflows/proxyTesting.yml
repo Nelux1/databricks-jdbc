@@ -3,6 +3,7 @@ name: Proxy Test with Dual Squid Proxies
 on:
   push:
     branches: [main]
+  workflow_dispatch:    # Allow manual trigger
 
 jobs:
   proxy-test:

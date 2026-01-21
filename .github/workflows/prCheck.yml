@@ -7,6 +7,7 @@ on:
   pull_request: # Unit tests can be run for all external PRs
     types: [opened, synchronize, reopened]
     branches: [ main ]
+  workflow_dispatch:    # Allow manual trigger
 
 jobs:
   formatting-check:
