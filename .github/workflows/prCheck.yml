@@ -198,7 +198,7 @@ jobs:
 
       - name: Install JDBC artifacts into maven local
         shell: bash
-        run: mvn -B -pl jdbc-core,assembly-uber,assembly-thin install -DskipTests
+        run: mvn -B -pl jdbc-core,assembly-uber,assembly-thin install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -Ddependency-check.skip=true
 
       - name: Check Uber Jar Packaging
         shell: bash
