@@ -73,7 +73,8 @@ public class DatabricksArrowPatchTest {
     }
 
     assertNotNull(throwable);
-    assertTrue(throwable.getCause().getMessage().contains("Failed to initialize MemoryUtil"));
+    assertTrue(throwable.getCause().getMessage().contains("Failed to initialize MemoryUtil"),
+            "Actual message - " + throwable.getCause().getMessage());
   }
 
   /**
