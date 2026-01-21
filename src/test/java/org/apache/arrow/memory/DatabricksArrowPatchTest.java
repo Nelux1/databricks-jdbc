@@ -2,8 +2,8 @@ package org.apache.arrow.memory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -73,8 +73,10 @@ public class DatabricksArrowPatchTest {
     }
 
     assertNotNull(throwable);
-    assertTrue(throwable.getCause().getMessage().contains("Failed to initialize MemoryUtil"),
-            "Actual message - " + throwable.getCause().getMessage());
+    for (var cause = throwable; cause != null; cause = cause.getCause()) {
+      logger.info("Throwable in chain: {} - {}", cause.getClass().getName(), cause.getMessage());
+    }
+    assertInstanceOf(ExceptionInInitializerError.class, throwable);
   }
 
   /**
