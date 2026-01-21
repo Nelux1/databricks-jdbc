@@ -196,9 +196,9 @@ jobs:
           </toolchains>
           EOF
 
-      - name: Install JDBC core into maven local
+      - name: Install JDBC artifacts into maven local
         shell: bash
-        run: mvn -pl jdbc-core clean install -DskipTests
+        run: mvn -B -pl jdbc-core,assembly-uber,assembly-thin install -DskipTests
 
       - name: Check Uber Jar Packaging
         shell: bash
