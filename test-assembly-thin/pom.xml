@@ -10,7 +10,6 @@
         <version>3.1.0-arrow-patched-SNAPSHOT</version>
     </parent>
 
-    <groupId>com.databricks</groupId>
     <artifactId>test-databricks-jdbc-thin</artifactId>
     <packaging>jar</packaging>
     <name>Test thin</name>
