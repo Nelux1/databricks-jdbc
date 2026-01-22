@@ -27,11 +27,22 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: GPG_PASSPHRASE
 
-      - name: Publish to the Maven Central Repository
+      # Step 1: Build and install dependencies to local Maven repository
+      # This builds jdbc-core (and parent) without publishing them.
+      # The -am flag builds all dependencies needed by assembly-uber.
+      # We use -Prelease here to generate sources/javadoc JARs for jdbc-core,
+      # which assembly-uber copies for its own sources/javadoc artifacts.
+      - name: Build dependencies
         run: |
-          # Deploy only uber JAR (thin JAR handled by release-thin.yml)
-          mvn -Prelease --batch-mode deploy \
-            -pl assembly-uber -am \
+          mvn -Prelease clean install --batch-mode -pl jdbc-core -am
+
+      # Step 2: Deploy only the uber JAR module to Maven Central
+      # We don't use -am here to avoid the central-publishing-maven-plugin
+      # from collecting parent/jdbc-core artifacts into the deployment bundle.
+      # The jdbc-core dependency is already available from Step 1.
+      - name: Publish uber JAR to Maven Central
+        run: |
+          mvn -Prelease deploy --batch-mode -pl assembly-uber \
             -Dnvd.api.key=${{ secrets.NVD_API_KEY }} \
             -Dossindex.username=${{ secrets.OSSINDEX_USERNAME }} \
             -Dossindex.password=${{ secrets.OSSINDEX_PASSWORD }}
@@ -45,3 +56,4 @@ jobs:
         with:
           files: |
             assembly-uber/target/databricks-jdbc-*.jar
+
