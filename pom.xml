@@ -59,6 +59,7 @@
     <dependency-check-maven.version>12.1.6</dependency-check-maven.version>
     <jacoco-maven-plugin.version>0.8.11</jacoco-maven-plugin.version>
     <spotless-maven-plugin.version>2.39.0</spotless-maven-plugin.version>
+    <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
 
     <!-- Dependency Versions -->
     <databricks-jdbc-version>3.1.0-arrow-patched-SNAPSHOT</databricks-jdbc-version>
@@ -143,6 +144,11 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-toolchains-plugin</artifactId>
           <version>${maven-toolchains-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>${build-helper-maven-plugin.version}</version>
         </plugin>
       </plugins>
     </pluginManagement>
@@ -230,28 +236,6 @@
       <build>
         <plugins>
           <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <version>3.6.1</version>
-            <executions>
-              <execution>
-                <id>attach-uber-minimal-pom</id>
-                <goals>
-                  <goal>attach-artifact</goal>
-                </goals>
-                <phase>package</phase>
-                <configuration>
-                  <artifacts>
-                    <artifact>
-                      <file>${project.basedir}/uber-minimal-pom.xml</file>
-                      <type>pom</type>
-                    </artifact>
-                  </artifacts>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-source-plugin</artifactId>
             <version>3.3.1</version>
@@ -311,6 +295,8 @@
               <publishingServerId>central</publishingServerId>
               <autoPublish>true</autoPublish>
               <waitUntil>published</waitUntil>
+              <!-- Skip by default - assembly modules override this -->
+              <skipPublishing>true</skipPublishing>
             </configuration>
           </plugin>
         </plugins>

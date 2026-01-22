@@ -10,11 +10,14 @@
         <version>3.1.0-arrow-patched-SNAPSHOT</version>
     </parent>
 
-    <groupId>com.databricks</groupId>
     <artifactId>databricks-jdbc-thin</artifactId>
     <packaging>jar</packaging>
-    <name>Databricks JDBC jar.</name>
+    <name>Databricks JDBC thin jar</name>
+    <description>
+        Databricks JDBC thin jar.
+    </description>
     <url>https://github.com/databricks/databricks-jdbc</url>
+
     <licenses>
         <license>
             <name>Apache License, Version 2.0</name>
@@ -51,6 +54,10 @@
             <version>3.1.0-arrow-patched-SNAPSHOT</version>
         </dependency>
     </dependencies>
+
+    <properties>
+        <maven.deploy.skip>false</maven.deploy.skip>
+    </properties>
 
     <build>
         <plugins>
@@ -95,6 +102,8 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <createSourcesJar>true</createSourcesJar>
+                            <shadeSourcesContent>true</shadeSourcesContent>
                             <createDependencyReducedPom>
                                 true
                             </createDependencyReducedPom>
@@ -158,4 +167,95 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <!-- Enable publishing for this module -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <configuration>
+                            <skipPublishing>false</skipPublishing>
+                        </configuration>
+                    </plugin>
+                    <!-- Skip maven-source-plugin - shade plugin creates sources with relocations -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Skip maven-javadoc-plugin - copy unshaded javadoc from jdbc-core instead -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Copy unshaded javadoc from jdbc-core -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-javadoc</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>copy</goal>
+                                </goals>
+                                <configuration>
+                                    <artifactItems>
+                                        <artifactItem>
+                                            <groupId>com.databricks</groupId>
+                                            <artifactId>databricks-jdbc-core</artifactId>
+                                            <version>${project.version}</version>
+                                            <classifier>javadoc</classifier>
+                                            <type>jar</type>
+                                            <destFileName>${project.artifactId}-${project.version}-javadoc.jar</destFileName>
+                                        </artifactItem>
+                                    </artifactItems>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Attach javadoc JAR -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-javadoc</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-javadoc.jar</file>
+                                            <type>jar</type>
+                                            <classifier>javadoc</classifier>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>
