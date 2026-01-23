@@ -8,9 +8,12 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.arrow.memory.util.CommonUtil;
 import org.apache.arrow.util.Preconditions;
 import org.apache.arrow.util.VisibleForTesting;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A ByteBuffer-backed implementation of ArrowBuf that does not use unsafe memory operations. This
@@ -18,6 +21,11 @@ import org.apache.arrow.util.VisibleForTesting;
  * MemoryUtil/Unsafe-based direct memory access.
  */
 public class DatabricksArrowBuf extends ArrowBuf {
+
+  private static final Logger logger = LoggerFactory.getLogger(DatabricksArrowBuf.class);
+
+  /** Generate unique id for each buffer. Helpful in tracing logs. */
+  private static final AtomicLong bufferId = new AtomicLong(0);
 
   private static final int SHORT_SIZE = Short.BYTES;
   private static final int INT_SIZE = Integer.BYTES;
@@ -33,6 +41,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private volatile long capacity;
   private long readerIndex;
   private long writerIndex;
+  private final long id = bufferId.getAndIncrement();
 
   /** Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class. */
   private static final int MEMORY_ADDRESS = 0;
@@ -188,7 +197,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   @Override
   public String toString() {
-    return String.format("DatabricksArrowBuf capacity:%d, offset:%d", capacity, offset);
+    return String.format("DatabricksArrowBuf id:%d capacity:%d, offset:%d", id, capacity, offset);
   }
 
   @Override
@@ -703,6 +712,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   @Override
   public ArrowBuf clear() {
+    logger.debug("Clearing buffer from {}", this);
     this.readerIndex = this.writerIndex = 0;
     return this;
   }
