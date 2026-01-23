@@ -2,6 +2,7 @@ package com.databricks.jdbc.api.impl.arrow;
 
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
+import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.DatabricksBufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
@@ -14,17 +15,23 @@ import org.apache.arrow.memory.RootAllocator;
  * DatabricksBufferAllocator} which uses heap memory.
  */
 public class ArrowBufferAllocator {
-  /** Can a {@code RootAllocator} be created in this JVM instance? */
-  private static final boolean canCreateRootAllocator;
+  /** Should the RootAllocator be used. */
+  private static final boolean canUseRootAllocator;
 
   /** Logger instance. */
   private static final JdbcLogger LOGGER = JdbcLoggerFactory.getLogger(ArrowBufferAllocator.class);
 
-  /* Check if the RootAllocator can be instantiated. */
+  /* Check if the RootAllocator can be used. */
   static {
     RootAllocator rootAllocator = null;
+    ArrowBuf buffer = null;
+    boolean canWriteWithRootAllocator = false;
+
     try {
       rootAllocator = new RootAllocator();
+      buffer = rootAllocator.buffer(64);
+      buffer.writeByte(0);
+      canWriteWithRootAllocator = true;
     } catch (Throwable t) {
       String message = t.getMessage();
       if (message == null) {
@@ -35,9 +42,12 @@ public class ArrowBufferAllocator {
               + message);
     }
 
-    canCreateRootAllocator = rootAllocator != null;
+    canUseRootAllocator = canWriteWithRootAllocator;
     if (rootAllocator != null) {
       try {
+        if (buffer != null) {
+          buffer.close();
+        }
         rootAllocator.close();
       } catch (Throwable t) {
         LOGGER.warn("RootAllocator could not be closed: " + t.getMessage());
@@ -49,7 +59,7 @@ public class ArrowBufferAllocator {
    * @return an instance of the {@code BufferAllocator}.
    */
   public static BufferAllocator getBufferAllocator() {
-    if (canCreateRootAllocator) {
+    if (canUseRootAllocator) {
       return new RootAllocator();
     } else {
       return new DatabricksBufferAllocator();
