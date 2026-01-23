@@ -9,7 +9,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.channels.Channels;
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.DatabricksBufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VarCharVector;
@@ -20,10 +19,7 @@ import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnJre;
-import org.junit.jupiter.api.condition.JRE;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,23 +37,8 @@ public class ArrowBufferAllocatorTest {
     }
   }
 
-  /**
-   * Test that the fallback {@code DatabricksBufferAllocator} is used when the creation of {@code
-   * RootAllocator} is not possible in the current JVM.
-   */
-  @Test
-  @Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
-  @EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
-  public void testCreateDatabricksBufferAllocator() throws IOException {
-    try (BufferAllocator allocator = ArrowBufferAllocator.getBufferAllocator()) {
-      assertInstanceOf(
-          DatabricksBufferAllocator.class, allocator, "Should create DatabricksBufferAllocator");
-      readAndWriteArrowData(allocator);
-    }
-  }
-
   /** Write and read a sample arrow data to validate that the BufferAllocator works. */
-  private void readAndWriteArrowData(BufferAllocator allocator) throws IOException {
+  static void readAndWriteArrowData(BufferAllocator allocator) throws IOException {
     // 1. Write sample data.
     Field name = new Field("name", FieldType.nullable(new ArrowType.Utf8()), null);
     Field age = new Field("age", FieldType.nullable(new ArrowType.Int(32, true)), null);

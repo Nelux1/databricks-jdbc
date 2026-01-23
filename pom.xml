@@ -366,6 +366,10 @@
             <exclude>**/ProxyTest.java</exclude>
             <exclude>**/LoggingTest.java</exclude>
             <exclude>**/SSLTest.java</exclude>
+            <!-- Allocation manager tests need separate JVMs (see allocation-manager-tests execution) -->
+            <exclude>**/ArrowBufferAllocatorNettyManagerTest.java</exclude>
+            <exclude>**/ArrowBufferAllocatorUnsafeManagerTest.java</exclude>
+            <exclude>**/ArrowBufferAllocatorUnknownManagerTest.java</exclude>
           </excludes>
           <argLine>
             @{argLine}
