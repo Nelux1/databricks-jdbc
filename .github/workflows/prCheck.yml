@@ -100,6 +100,11 @@ jobs:
         if: matrix.java-version >= 17
         run: mvn -Pjdk${{ matrix.java-version }}-NioNotOpen -pl jdbc-core test -Dgroups='Jvm17PlusAndArrowToNioReflectionDisabled'
 
+      - name: Check Arrow Allocator Manager Tests
+        shell: bash
+        if: matrix.java-version >= 17
+        run: mvn -Pjdk${{ matrix.java-version }}-NioNotOpen -pl jdbc-core test -Dgroups='Jvm17PlusAndArrowToNioReflectionDisabled' -Dtest="ArrowBufferAllocatorNettyManagerTest,ArrowBufferAllocatorUnsafeManagerTest,ArrowBufferAllocatorUnknownManagerTest" -DforkCount=1 -DreuseForks=false
+
       - name: Check Arrow Memory Tests
         shell: bash
         run: mvn -Plow-memory -pl jdbc-core test -Dtest='DatabricksArrowPatchMemoryUsageTest'
