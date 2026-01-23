@@ -61,70 +61,6 @@
 
     <build>
         <plugins>
-            <!-- Copy sources and javadoc from jdbc-core for Maven Central -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.6.1</version>
-                <executions>
-                    <execution>
-                        <id>copy-sources-javadoc</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>copy</goal>
-                        </goals>
-                        <configuration>
-                            <artifactItems>
-                                <artifactItem>
-                                    <groupId>com.databricks</groupId>
-                                    <artifactId>databricks-jdbc-core</artifactId>
-                                    <version>${project.version}</version>
-                                    <classifier>sources</classifier>
-                                    <type>jar</type>
-                                    <destFileName>${project.artifactId}-${project.version}-sources.jar</destFileName>
-                                </artifactItem>
-                                <artifactItem>
-                                    <groupId>com.databricks</groupId>
-                                    <artifactId>databricks-jdbc-core</artifactId>
-                                    <version>${project.version}</version>
-                                    <classifier>javadoc</classifier>
-                                    <type>jar</type>
-                                    <destFileName>${project.artifactId}-${project.version}-javadoc.jar</destFileName>
-                                </artifactItem>
-                            </artifactItems>
-                            <outputDirectory>${project.build.directory}</outputDirectory>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <!-- Attach copied sources and javadoc JARs -->
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>attach-sources-javadoc</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>attach-artifact</goal>
-                        </goals>
-                        <configuration>
-                            <artifacts>
-                                <artifact>
-                                    <file>${project.build.directory}/${project.artifactId}-${project.version}-sources.jar</file>
-                                    <type>jar</type>
-                                    <classifier>sources</classifier>
-                                </artifact>
-                                <artifact>
-                                    <file>${project.build.directory}/${project.artifactId}-${project.version}-javadoc.jar</file>
-                                    <type>jar</type>
-                                    <classifier>javadoc</classifier>
-                                </artifact>
-                            </artifacts>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>flatten-maven-plugin</artifactId>
@@ -347,6 +283,69 @@
                             <execution>
                                 <id>attach-javadocs</id>
                                 <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Copy sources and javadoc from jdbc-core for Maven Central -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-sources-javadoc</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>copy</goal>
+                                </goals>
+                                <configuration>
+                                    <artifactItems>
+                                        <artifactItem>
+                                            <groupId>com.databricks</groupId>
+                                            <artifactId>databricks-jdbc-core</artifactId>
+                                            <version>${project.version}</version>
+                                            <classifier>sources</classifier>
+                                            <type>jar</type>
+                                            <destFileName>${project.artifactId}-${project.version}-sources.jar</destFileName>
+                                        </artifactItem>
+                                        <artifactItem>
+                                            <groupId>com.databricks</groupId>
+                                            <artifactId>databricks-jdbc-core</artifactId>
+                                            <version>${project.version}</version>
+                                            <classifier>javadoc</classifier>
+                                            <type>jar</type>
+                                            <destFileName>${project.artifactId}-${project.version}-javadoc.jar</destFileName>
+                                        </artifactItem>
+                                    </artifactItems>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Attach copied sources and javadoc JARs -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-sources-javadoc</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-sources.jar</file>
+                                            <type>jar</type>
+                                            <classifier>sources</classifier>
+                                        </artifact>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-javadoc.jar</file>
+                                            <type>jar</type>
+                                            <classifier>javadoc</classifier>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
