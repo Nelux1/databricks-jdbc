@@ -1,12 +1,16 @@
 package org.apache.arrow.memory;
 
 import org.apache.arrow.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A Databricks reference manager which acts as a no-op and does not reference count. All data is
  * allocated on the heap and taken care of by the JVM garbage collector.
  */
 class DatabricksReferenceManager implements ReferenceManager {
+  private static final Logger logger = LoggerFactory.getLogger(DatabricksReferenceManager.class);
+
   /** Allocator of this reference manager. */
   private final DatabricksBufferAllocator allocator;
 
@@ -75,6 +79,9 @@ class DatabricksReferenceManager implements ReferenceManager {
 
     // Create a new DatabricksArrowBuf sharing the same byte buffer.
     DatabricksArrowBuf buf = checkBufferType(sourceBuffer);
+
+    logger.debug("Deriving buffer at index {} and length {} from buffer {}", index, length, buf);
+
     return new DatabricksArrowBuf(
         this, null, buf.getByteBuffer(), buf.getOffset() + (int) index, length);
   }

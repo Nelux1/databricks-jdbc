@@ -8,6 +8,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.arrow.memory.rounding.DefaultRoundingPolicy;
 import org.apache.arrow.memory.rounding.RoundingPolicy;
 import org.apache.arrow.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A BufferAllocator implementation that uses DatabricksArrowBuf for memory allocation. This
@@ -18,6 +20,8 @@ import org.apache.arrow.util.Preconditions;
  * where heap-based memory management is preferred.
  */
 public class DatabricksBufferAllocator implements BufferAllocator {
+  private static final Logger logger = LoggerFactory.getLogger(DatabricksBufferAllocator.class);
+
   private final String name;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final DatabricksBufferAllocator parent;
@@ -67,6 +71,8 @@ public class DatabricksBufferAllocator implements BufferAllocator {
     if (size == 0) {
       return getEmpty();
     }
+
+    logger.debug("Allocating buffer of size {}", size);
 
     // Create the reference manager and buffer
     DatabricksReferenceManager refManager = new DatabricksReferenceManager(this, size);
