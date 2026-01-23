@@ -23,6 +23,13 @@ public class ArrowBufferAllocator {
 
   /* Check if the RootAllocator can be used. */
   static {
+    canUseRootAllocator = canUseRootAllocator();
+  }
+
+  /**
+   * @return true iff the RootAllocator can be used.
+   */
+  static boolean canUseRootAllocator() {
     RootAllocator rootAllocator = null;
     ArrowBuf buffer = null;
     boolean canWriteWithRootAllocator = false;
@@ -42,7 +49,6 @@ public class ArrowBufferAllocator {
               + message);
     }
 
-    canUseRootAllocator = canWriteWithRootAllocator;
     if (rootAllocator != null) {
       try {
         if (buffer != null) {
@@ -53,6 +59,8 @@ public class ArrowBufferAllocator {
         LOGGER.warn("RootAllocator could not be closed: " + t.getMessage());
       }
     }
+
+    return canWriteWithRootAllocator;
   }
 
   /**
