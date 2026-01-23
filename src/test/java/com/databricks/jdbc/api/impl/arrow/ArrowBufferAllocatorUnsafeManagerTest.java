@@ -1,5 +1,6 @@
 package com.databricks.jdbc.api.impl.arrow;
 
+import static com.databricks.jdbc.api.impl.arrow.ArrowBufferAllocatorTest.readAndWriteArrowData;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import java.io.IOException;
@@ -20,7 +21,7 @@ import org.slf4j.LoggerFactory;
  * <p>This test is in a separate class to ensure it runs in a fresh JVM with the system property set
  * before Arrow's static initialization.
  */
-public class ArrowBufferAllocatorUnsafeManagerTest extends ArrowBufferAllocatorTest {
+public class ArrowBufferAllocatorUnsafeManagerTest {
   private static final Logger logger =
       LoggerFactory.getLogger(ArrowBufferAllocatorUnsafeManagerTest.class);
 

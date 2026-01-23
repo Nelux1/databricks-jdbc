@@ -38,7 +38,7 @@ public class ArrowBufferAllocatorTest {
   }
 
   /** Write and read a sample arrow data to validate that the BufferAllocator works. */
-  protected void readAndWriteArrowData(BufferAllocator allocator) throws IOException {
+  static void readAndWriteArrowData(BufferAllocator allocator) throws IOException {
     // 1. Write sample data.
     Field name = new Field("name", FieldType.nullable(new ArrowType.Utf8()), null);
     Field age = new Field("age", FieldType.nullable(new ArrowType.Int(32, true)), null);
