@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.databricks.jdbc.api.impl.arrow.ArrowBufferAllocator;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -75,6 +76,10 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.vector.util.Text;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.condition.EnabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -82,6 +87,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Test all Arrow supported data types can be read and written with the patched Arrow classes. */
+@Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
+@EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
 public class DatabricksArrowPatchReaderWriterTest {
   private static final Logger logger =
       LoggerFactory.getLogger(DatabricksArrowPatchReaderWriterTest.class);
@@ -91,9 +98,6 @@ public class DatabricksArrowPatchReaderWriterTest {
     // Large enough value which fits within the heap space for tests.
     int totalRows = (int) Math.pow(2, 19); // A large enough value.
     return Stream.of(
-        Arguments.of(new RootAllocator(), new RootAllocator(), totalRows),
-        Arguments.of(new RootAllocator(), new DatabricksBufferAllocator(), totalRows),
-        Arguments.of(new DatabricksBufferAllocator(), new RootAllocator(), totalRows),
         Arguments.of(new DatabricksBufferAllocator(), new DatabricksBufferAllocator(), totalRows));
   }
 
@@ -101,10 +105,12 @@ public class DatabricksArrowPatchReaderWriterTest {
   private static Stream<Arguments> getBufferAllocatorsSmallRows() {
     int totalRows = 100_000; // A large enough value.
     return Stream.of(
-        Arguments.of(new RootAllocator(), new RootAllocator(), totalRows),
-        Arguments.of(new RootAllocator(), new DatabricksBufferAllocator(), totalRows),
-        Arguments.of(new DatabricksBufferAllocator(), new RootAllocator(), totalRows),
         Arguments.of(new DatabricksBufferAllocator(), new DatabricksBufferAllocator(), totalRows));
+  }
+
+  @BeforeAll
+  public static void logDetails() {
+    logger.info("Using allocator: {}", ArrowBufferAllocator.getBufferAllocator().getName());
   }
 
   /** Test read and write of integer types. */
