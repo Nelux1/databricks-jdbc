@@ -25,7 +25,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private static final Logger logger = LoggerFactory.getLogger(DatabricksArrowBuf.class);
 
   /** Generate unique id for each buffer. Helpful in tracing logs. */
-  private static final AtomicLong bufferId =  new AtomicLong(0);
+  private static final AtomicLong bufferId = new AtomicLong(0);
 
   private static final int SHORT_SIZE = Short.BYTES;
   private static final int INT_SIZE = Integer.BYTES;
@@ -43,14 +43,10 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private long writerIndex;
   private final long id = bufferId.getAndIncrement();
 
-  /**
-   * Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class.
-   */
+  /** Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class. */
   private static final int MEMORY_ADDRESS = 0;
 
-  /**
-   * ArrowBuf uses native order, copying the same logic here.
-   */
+  /** ArrowBuf uses native order, copying the same logic here. */
   private static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
 
   /**
@@ -61,9 +57,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
    * @param capacity The capacity in bytes of this buffer
    */
   public DatabricksArrowBuf(
-      ReferenceManager referenceManager,
-      BufferManager bufferManager,
-      long capacity) {
+      ReferenceManager referenceManager, BufferManager bufferManager, long capacity) {
     super(referenceManager, bufferManager, capacity, MEMORY_ADDRESS);
 
     this.referenceManager = referenceManager;
@@ -191,8 +185,8 @@ public class DatabricksArrowBuf extends ArrowBuf {
     chk(index, length);
     ByteBuffer duplicate = byteBuffer.duplicate();
     duplicate.order(BYTE_ORDER);
-    duplicate.position(offset + (int)index);
-    duplicate.limit(offset + (int)index + length);
+    duplicate.position(offset + (int) index);
+    duplicate.limit(offset + (int) index + length);
     return duplicate;
   }
 
