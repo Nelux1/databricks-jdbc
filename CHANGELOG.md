@@ -1,4 +1,18 @@
 # Version Changelog
+## [v3.1.1] - 2026-01-07
+
+### Added
+- Added token caching for all authentication providers to reduce token endpoint calls.
+- We will be rolling out the use of Databricks SQL Execution API by default for queries submitted on DBSQL. To continue using Databricks Thrift Server backend for execution, set `UseThriftClient` to `1`.
+
+### Updated
+- Changed default value of `IgnoreTransactions` from `0` to `1` to disable multi-statement transactions by default. Preview participants can opt-in by setting `IgnoreTransactions=0`. Also updated `supportsTransactions()` to respect this flag.
+
+### Fixed
+- [PECOBLR-1131] Fix incorrect refetching of expired CloudFetch links when using Thrift protocol.
+- Fixed logging to respect params when the driver is shaded.
+- Fixed `isWildcard` to return true only when the value is `*`
+
 ## [v3.0.7] - 2025-12-18
 
 ### Updated
@@ -65,10 +79,10 @@
 
 ---
 
-## [v3.0.4] - 2025-11-12
+## [v3.0.4] - 2025-11-12: DEPRECATED, Use v3.0.5 instead
 
 ### Added
-- Added support for geospatial data types.
+- Added support for geospatial data types. (Use v3.0.5+ for OGC compliant WKB support)
 - Added support for telemetry log levels, which can be controlled via the connection parameter `TelemetryLogLevel`. This allows users to configure the verbosity of telemetry logging from OFF to TRACE.
 - Added full support for JDBC transaction control methods in Databricks. Transaction support in Databricks is currently available as a Private Preview. The `IgnoreTransactions` connection parameter can be set to `1` to disable or no-op transaction control methods.
 - Added a new config attribute `DisableOauthRefreshToken` to control whether refresh tokens are requested in OAuth exchanges. By default, the driver does not include the `offline_access` scope. If `offline_access` is explicitly provided by the user, it is preserved and not removed.

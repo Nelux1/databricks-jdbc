@@ -4,7 +4,8 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.databricks</groupId>
   <artifactId>databricks-jdbc-parent</artifactId>
-  <version>3.1.0-arrow-patched-SNAPSHOT</version>
+  <!-- This value may be modified by a release script to reflect the current version of the driver. -->
+  <version>3.2.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Databricks JDBC Parent</name>
   <description>Parent POM for Databricks JDBC Driver.</description>
@@ -62,7 +63,7 @@
     <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
 
     <!-- Dependency Versions -->
-    <databricks-jdbc-version>3.1.0-arrow-patched-SNAPSHOT</databricks-jdbc-version>
+    <databricks-jdbc-version>3.2.0-SNAPSHOT</databricks-jdbc-version>
     <arrow.version>18.3.0</arrow.version>
     <commons-lang3.version>3.18.0</commons-lang3.version>
     <commons-configuration.version>2.10.1</commons-configuration.version>
@@ -72,7 +73,7 @@
     <async-httpclient.version>5.3.1</async-httpclient.version>
     <thrift.version>0.19.0</thrift.version>
     <slf4j.version>2.0.13</slf4j.version>
-    <log4j.version>2.22.1</log4j.version>
+    <log4j.version>2.25.3</log4j.version>
     <jackson.version>2.18.3</jackson.version>
     <gson.version>2.13.2</gson.version>
     <google.guava.version>33.0.0-jre</google.guava.version>
