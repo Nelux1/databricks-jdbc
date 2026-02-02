@@ -2,10 +2,12 @@ package com.databricks.jdbc.api.internal;
 
 import com.databricks.jdbc.common.*;
 import com.databricks.jdbc.exception.DatabricksParsingException;
+import com.databricks.jdbc.exception.DatabricksValidationException;
 import com.databricks.sdk.core.ProxyConfig;
 import com.databricks.sdk.core.utils.Cloud;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface IDatabricksConnectionContext {
 
@@ -78,9 +80,9 @@ public interface IDatabricksConnectionContext {
 
   String getLogPathString();
 
-  int getLogFileSize();
+  int getLogFileSize() throws DatabricksValidationException;
 
-  int getLogFileCount();
+  int getLogFileCount() throws DatabricksValidationException;
 
   /** Returns the userAgent string specific to client used to fetch results. */
   String getClientUserAgent();
@@ -145,7 +147,7 @@ public interface IDatabricksConnectionContext {
 
   String getEndpointURL() throws DatabricksParsingException;
 
-  int getAsyncExecPollInterval();
+  int getAsyncExecPollInterval() throws DatabricksValidationException;
 
   Boolean shouldEnableArrow();
 
@@ -156,7 +158,7 @@ public interface IDatabricksConnectionContext {
   Boolean getUseEmptyMetadata();
 
   /** Returns the number of threads to be used for fetching data from cloud storage */
-  int getCloudFetchThreadPoolSize();
+  int getCloudFetchThreadPoolSize() throws DatabricksValidationException;
 
   /** Returns the minimum expected download speed threshold in MB/s for CloudFetch operations */
   double getCloudFetchSpeedThreshold();
@@ -171,7 +173,13 @@ public interface IDatabricksConnectionContext {
 
   int getRateLimitRetryTimeout();
 
+  Set<Integer> getApiRetriableHttpCodes();
+
+  int getApiRetryTimeout();
+
   int getIdleHttpConnectionExpiry();
+
+  List<String> getNonRowcountQueryPrefixes();
 
   boolean supportManyParameters();
 
@@ -260,13 +268,16 @@ public interface IDatabricksConnectionContext {
   String getSSLTrustStoreProvider();
 
   /** Returns the maximum number of commands that can be executed in a single batch. */
-  int getMaxBatchSize();
+  int getMaxBatchSize() throws DatabricksValidationException;
 
   /** Checks if Telemetry is enabled */
   boolean isTelemetryEnabled();
 
   /** Returns the batch size for Telemetry logs processing */
   int getTelemetryBatchSize();
+
+  /** Returns the maximum number of rows per batch insert execution */
+  int getBatchInsertSize() throws DatabricksValidationException;
 
   /**
    * Returns a unique identifier for this connection context.
@@ -297,8 +308,14 @@ public interface IDatabricksConnectionContext {
   /** Returns true if driver return complex data type java objects natively as opposed to string */
   boolean isComplexDatatypeSupportEnabled();
 
+  /**
+   * Returns true if driver returns GEOMETRY and GEOGRAPHY types natively. Requires
+   * isComplexDatatypeSupportEnabled() to be true
+   */
+  boolean isGeoSpatialSupportEnabled();
+
   /** Returns the size for HTTP connection pool */
-  int getHttpConnectionPoolSize();
+  int getHttpConnectionPoolSize() throws DatabricksValidationException;
 
   /** Returns the list of HTTP codes to retry for UC Volume Ingestion */
   List<Integer> getUCIngestionRetriableHttpCodes();
@@ -388,6 +405,61 @@ public interface IDatabricksConnectionContext {
   /** Returns whether transaction-related method calls should be ignored */
   boolean getIgnoreTransactions();
 
+  /**
+   * Returns whether to fetch auto-commit state from server using SQL query instead of cached value
+   */
+  boolean getFetchAutoCommitFromServer();
+
   /* Returns whether metric view metadata is enabled */
   boolean getEnableMetricViewMetadata();
+
+  /**
+   * Returns whether the x-databricks-sea-can-run-fully-sync header should be enabled for
+   * synchronous metadata requests in SEA mode
+   */
+  boolean isSeaSyncMetadataEnabled();
+
+  /** Returns whether OAuth refresh tokens should be disabled (omit offline_access by default). */
+  boolean getDisableOauthRefreshToken();
+
+  /** Returns whether token federation is enabled for authentication. */
+  boolean isTokenFederationEnabled();
+
+  /** Returns whether streaming chunk provider is enabled for result fetching. */
+  boolean isStreamingChunkProviderEnabled();
+
+  /**
+   * Returns whether streaming mode is enabled for inline results (Thrift columnar and inline
+   * Arrow).
+   */
+  boolean isInlineStreamingEnabled();
+
+  /**
+   * Returns whether CloudFetch (URL-based result download) is enabled.
+   *
+   * <p>When enabled (default), the server may return URL_BASED_SET results that are downloaded from
+   * cloud storage. When disabled, the server returns ARROW_BASED_SET with inline Arrow data.
+   *
+   * @return true if CloudFetch is enabled, false otherwise
+   */
+  boolean isCloudFetchEnabled();
+
+  /**
+   * Returns the maximum number of batches to keep in memory for Thrift streaming.
+   *
+   * @return the max batches in memory (default: 3)
+   */
+  int getThriftMaxBatchesInMemory();
+
+  /**
+   * Returns the number of chunk links to prefetch ahead of consumption.
+   *
+   * <p>This controls how far ahead the streaming chunk provider fetches links before they are
+   * needed. Higher values reduce latency by ensuring links are ready when needed. Lower values
+   * reduce the risk of link expiry for workloads that process data slowly (e.g., heavy computation
+   * per row), since prefetched links may expire before being used.
+   *
+   * @return the link prefetch window size (default: 128)
+   */
+  int getLinkPrefetchWindow();
 }

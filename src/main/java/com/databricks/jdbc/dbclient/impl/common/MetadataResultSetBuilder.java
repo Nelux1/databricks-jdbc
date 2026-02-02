@@ -1,6 +1,8 @@
 package com.databricks.jdbc.dbclient.impl.common;
 
 import static com.databricks.jdbc.common.MetadataResultConstants.*;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.GEOGRAPHY;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.GEOMETRY;
 import static com.databricks.jdbc.common.util.DatabricksTypeUtil.INTERVAL;
 import static com.databricks.jdbc.common.util.DatabricksTypeUtil.MEASURE;
 import static com.databricks.jdbc.common.util.WildcardUtil.isNullOrEmpty;
@@ -9,10 +11,13 @@ import static com.databricks.jdbc.dbclient.impl.common.TypeValConstants.*;
 
 import com.databricks.jdbc.api.impl.DatabricksResultSet;
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
+import com.databricks.jdbc.api.internal.IDatabricksSession;
 import com.databricks.jdbc.common.CommandName;
 import com.databricks.jdbc.common.Nullable;
 import com.databricks.jdbc.common.StatementType;
 import com.databricks.jdbc.exception.DatabricksSQLException;
+import com.databricks.jdbc.log.JdbcLogger;
+import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.core.ColumnMetadata;
 import com.databricks.jdbc.model.core.ResultColumn;
 import com.databricks.jdbc.model.core.StatementStatus;
@@ -27,6 +32,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class MetadataResultSetBuilder {
+  private static final JdbcLogger LOGGER =
+      JdbcLoggerFactory.getLogger(MetadataResultSetBuilder.class);
   private static final IDatabricksResultSetAdapter defaultAdapter =
       new DefaultDatabricksResultSetAdapter();
   private static final IDatabricksResultSetAdapter importedKeysAdapter =
@@ -35,6 +42,31 @@ public class MetadataResultSetBuilder {
 
   public MetadataResultSetBuilder(IDatabricksConnectionContext ctx) {
     this.ctx = ctx;
+  }
+
+  public boolean shouldAllowCatalogAccess(
+      String catalog, String currentCatalog, IDatabricksSession session) throws SQLException {
+    if (ctx == null || ctx.getEnableMultipleCatalogSupport()) {
+      return true;
+    }
+
+    if (catalog == null) {
+      return true;
+    }
+
+    if (currentCatalog == null) {
+      currentCatalog = session.getCurrentCatalog();
+    }
+
+    if (currentCatalog != null && currentCatalog.equals(catalog)) {
+      return true;
+    }
+
+    LOGGER.debug(
+        "Catalog access denied for catalog '{}' when enableMultipleCatalogSupport=false. Current catalog is '{}'",
+        catalog,
+        currentCatalog);
+    return false;
   }
 
   public DatabricksResultSet getFunctionsResult(DatabricksResultSet resultSet, String catalog)
@@ -88,6 +120,14 @@ public class MetadataResultSetBuilder {
         getRows(resultSet, TABLE_COLUMNS, defaultAdapter).stream()
             .filter(row -> allowedTableTypes.contains(row.get(3))) // Filtering based on table type
             .collect(Collectors.toList());
+
+    // Sort in order TABLE_TYPE, TABLE_CAT, TABLE_SCHEM, TABLE_NAME (matching Thrift mode)
+    rows.sort(
+        Comparator.comparing((List<Object> r) -> (String) r.get(3)) // TABLE_TYPE
+            .thenComparing(r -> (String) r.get(0)) // TABLE_CAT
+            .thenComparing(r -> (String) r.get(1)) // TABLE_SCHEM
+            .thenComparing(r -> (String) r.get(2))); // TABLE_NAME
+
     return buildResultSet(
         TABLE_COLUMNS,
         rows,
@@ -193,8 +233,11 @@ public class MetadataResultSetBuilder {
             if (typeVal == null) { // safety check
               object = null;
             } else {
-              // Check if complex datatype support is disabled and this is a complex type
-              if (!ctx.isComplexDatatypeSupportEnabled() && isComplexType(typeVal)) {
+              // Check if geospatial support is disabled and this is a geospatial type
+              if (!ctx.isGeoSpatialSupportEnabled() && isGeospatialType(typeVal)) {
+                object = Types.VARCHAR;
+              } else if (!ctx.isComplexDatatypeSupportEnabled() && isComplexType(typeVal)) {
+                // Check if complex datatype support is disabled and this is a complex type
                 object = Types.VARCHAR;
               } else {
                 object = getCode(stripBaseTypeName(typeVal));
@@ -238,7 +281,10 @@ public class MetadataResultSetBuilder {
               }
             } catch (SQLException e) {
               if (mappedColumn.getColumnName().equals(DATA_TYPE_COLUMN.getColumnName())) {
-                if (!ctx.isComplexDatatypeSupportEnabled() && isComplexType(typeVal)) {
+                // Check if geospatial support is disabled and this is a geospatial type
+                if (!ctx.isGeoSpatialSupportEnabled() && isGeospatialType(typeVal)) {
+                  object = Types.VARCHAR;
+                } else if (!ctx.isComplexDatatypeSupportEnabled() && isComplexType(typeVal)) {
                   object = Types.VARCHAR;
                 } else {
                   object = getCode(stripBaseTypeName(typeVal));
@@ -550,6 +596,20 @@ public class MetadataResultSetBuilder {
     return baseType.contains(ARRAY_TYPE)
         || baseType.contains(MAP_TYPE)
         || baseType.contains(STRUCT_TYPE);
+  }
+
+  /**
+   * Checks if the given type string represents a geospatial type (GEOMETRY or GEOGRAPHY).
+   *
+   * @param typeVal The type string to check
+   * @return true if the type is a geospatial type, false otherwise
+   */
+  private boolean isGeospatialType(String typeVal) {
+    if (typeVal == null) {
+      return false;
+    }
+    String baseType = stripBaseTypeName(typeVal);
+    return baseType.contains(GEOMETRY) || baseType.contains(GEOGRAPHY);
   }
 
   int getCode(String s) {
@@ -897,8 +957,11 @@ public class MetadataResultSetBuilder {
             if (typeVal == null) { // safety check
               object = null;
             } else {
-              // Check if complex datatype support is disabled and this is a complex type
-              if (!ctx.isComplexDatatypeSupportEnabled() && isComplexType(typeVal)) {
+              // Check if geospatial support is disabled and this is a geospatial type
+              if (!ctx.isGeoSpatialSupportEnabled() && isGeospatialType(typeVal)) {
+                object = Types.VARCHAR;
+              } else if (!ctx.isComplexDatatypeSupportEnabled() && isComplexType(typeVal)) {
+                // Check if complex datatype support is disabled and this is a complex type
                 object = Types.VARCHAR;
               } else {
                 object = getCode(stripBaseTypeName(typeVal));

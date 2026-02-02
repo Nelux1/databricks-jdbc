@@ -10,7 +10,9 @@ import static com.databricks.jdbc.dbclient.impl.common.CommandConstants.GET_TABL
 import static com.databricks.jdbc.model.core.ColumnInfoTypeName.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,6 +25,7 @@ import com.databricks.jdbc.dbclient.impl.common.StatementId;
 import com.databricks.jdbc.exception.DatabricksParsingException;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.model.client.thrift.generated.*;
+import com.databricks.jdbc.model.core.ChunkLinkFetchResult;
 import com.databricks.jdbc.model.core.ExternalLink;
 import com.databricks.jdbc.model.core.ResultColumn;
 import com.databricks.sdk.core.DatabricksConfig;
@@ -33,6 +36,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -59,6 +63,13 @@ public class DatabricksThriftServiceClientTest {
   @Mock DatabricksStatement statement;
   @Mock DatabricksConfig databricksConfig;
   @Mock ResultSetMetaData mockedMetaData;
+
+  @BeforeEach
+  void setUp() {
+    // Enable multiple catalog support by default for all tests
+    // Individual tests can override this if needed
+    lenient().when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(true);
+  }
 
   @Test
   void testCreateSession() throws DatabricksSQLException {
@@ -162,6 +173,9 @@ public class DatabricksThriftServiceClientTest {
   void testGetRequestWithDifferentProtocolVersions(TProtocolVersion protocolVersion)
       throws SQLException {
     when(connectionContext.shouldEnableArrow()).thenReturn(true);
+    // Use lenient() because isCloudFetchEnabled() is only called for protocols that support
+    // CloudFetch
+    lenient().when(connectionContext.isCloudFetchEnabled()).thenReturn(true);
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
     when(session.getSessionInfo()).thenReturn(SESSION_INFO);
@@ -241,6 +255,7 @@ public class DatabricksThriftServiceClientTest {
   @Test
   void testExecute() throws SQLException {
     when(connectionContext.shouldEnableArrow()).thenReturn(true);
+    when(connectionContext.isCloudFetchEnabled()).thenReturn(true);
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
     when(session.getSessionInfo()).thenReturn(SESSION_INFO);
@@ -280,8 +295,51 @@ public class DatabricksThriftServiceClientTest {
   }
 
   @Test
+  void testExecuteWithCloudFetchDisabled() throws SQLException {
+    when(connectionContext.shouldEnableArrow()).thenReturn(true);
+    when(connectionContext.isCloudFetchEnabled()).thenReturn(false);
+    DatabricksThriftServiceClient client =
+        new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
+    when(session.getSessionInfo()).thenReturn(SESSION_INFO);
+    when(parentStatement.getStatement()).thenReturn(statement);
+    when(parentStatement.getMaxRows()).thenReturn(10);
+    when(statement.getQueryTimeout()).thenReturn(10);
+    TSparkArrowTypes arrowNativeTypes =
+        new TSparkArrowTypes()
+            .setComplexTypesAsArrow(true)
+            .setIntervalTypesAsArrow(true)
+            .setNullTypeAsArrow(true)
+            .setDecimalAsArrow(true)
+            .setTimestampAsArrow(true);
+    TExecuteStatementReq executeStatementReq =
+        new TExecuteStatementReq()
+            .setStatement(TEST_STRING)
+            .setSessionHandle(SESSION_HANDLE)
+            .setCanReadArrowResult(true)
+            .setQueryTimeout(10)
+            .setResultRowLimit(10)
+            .setCanDecompressLZ4Result(true)
+            .setCanDownloadResult(false)
+            .setParameters(Collections.emptyList())
+            .setRunAsync(true)
+            .setUseArrowNativeTypes(arrowNativeTypes);
+    when(thriftAccessor.execute(executeStatementReq, parentStatement, session, StatementType.SQL))
+        .thenReturn(resultSet);
+    DatabricksResultSet actualResultSet =
+        client.executeStatement(
+            TEST_STRING,
+            CLUSTER_COMPUTE,
+            Collections.emptyMap(),
+            StatementType.SQL,
+            session,
+            parentStatement);
+    assertEquals(resultSet, actualResultSet);
+  }
+
+  @Test
   void testExecuteAsync() throws SQLException {
     when(connectionContext.shouldEnableArrow()).thenReturn(true);
+    when(connectionContext.isCloudFetchEnabled()).thenReturn(true);
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
     when(session.getSessionInfo()).thenReturn(SESSION_INFO);
@@ -369,17 +427,19 @@ public class DatabricksThriftServiceClientTest {
             .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS))
             .setResults(resultData)
             .setResultSetMetadata(resultMetadataData);
-    when(thriftAccessor.getResultSetResp(any(), any())).thenReturn(response);
+    when(thriftAccessor.fetchResultsWithAbsoluteOffset(any(), anyLong())).thenReturn(response);
     when(resultData.getResultLinks())
         .thenReturn(
             Collections.singletonList(new TSparkArrowResultLink().setFileLink(TEST_STRING)));
-    Collection<ExternalLink> resultChunks = client.getResultChunks(TEST_STMT_ID, 0);
-    assertEquals(resultChunks.size(), 1);
-    assertEquals(resultChunks.stream().findFirst().get().getExternalLink(), TEST_STRING);
+    // Pass chunkIndex=0 and rowOffset=0 for the first chunk
+    ChunkLinkFetchResult result = client.getResultChunks(TEST_STMT_ID, 0, 0);
+    List<ExternalLink> chunkLinks = result.getChunkLinks();
+    assertEquals(1, chunkLinks.size());
+    assertEquals(TEST_STRING, chunkLinks.get(0).getExternalLink());
   }
 
   @Test
-  void testGetResultChunksThrowsError() throws SQLException {
+  void testGetResultChunksReturnsEmptyWhenNoLinks() throws SQLException {
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
     TFetchResultsResp response =
@@ -387,10 +447,42 @@ public class DatabricksThriftServiceClientTest {
             .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS))
             .setResults(resultData)
             .setResultSetMetadata(resultMetadataData);
-    when(thriftAccessor.getResultSetResp(any(), any())).thenReturn(response);
-    assertThrows(DatabricksSQLException.class, () -> client.getResultChunks(TEST_STMT_ID, -1));
-    assertThrows(DatabricksSQLException.class, () -> client.getResultChunks(TEST_STMT_ID, 2));
-    assertThrows(DatabricksSQLException.class, () -> client.getResultChunks(TEST_STMT_ID, 1));
+    when(thriftAccessor.fetchResultsWithAbsoluteOffset(any(), anyLong())).thenReturn(response);
+    when(resultData.getResultLinks()).thenReturn(null);
+    ChunkLinkFetchResult result = client.getResultChunks(TEST_STMT_ID, 0, 0);
+    assertTrue(result.isEndOfStream());
+    assertEquals(0, result.getChunkLinks().size());
+  }
+
+  @Test
+  void testGetResultChunksRowOffsetMismatchThrowsException() throws SQLException {
+    DatabricksThriftServiceClient client =
+        new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
+
+    long requestedStartRowOffset = 1000L;
+    long actualStartRowOffset = 500L;
+
+    TSparkArrowResultLink resultLink =
+        new TSparkArrowResultLink()
+            .setFileLink(TEST_STRING)
+            .setStartRowOffset(actualStartRowOffset)
+            .setRowCount(100)
+            .setBytesNum(1024)
+            .setExpiryTime(System.currentTimeMillis() + 3600000);
+
+    TFetchResultsResp response =
+        new TFetchResultsResp()
+            .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS))
+            .setHasMoreRows(false)
+            .setResults(resultData)
+            .setResultSetMetadata(resultMetadataData);
+    when(thriftAccessor.fetchResultsWithAbsoluteOffset(any(), eq(requestedStartRowOffset)))
+        .thenReturn(response);
+    when(resultData.getResultLinks()).thenReturn(Collections.singletonList(resultLink));
+
+    assertThrows(
+        DatabricksSQLException.class,
+        () -> client.getResultChunks(TEST_STMT_ID, 5, requestedStartRowOffset));
   }
 
   @Test
@@ -594,6 +686,7 @@ public class DatabricksThriftServiceClientTest {
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
     when(connectionContext.enableShowCommandsForGetFunctions()).thenReturn(true);
     when(connectionContext.shouldEnableArrow()).thenReturn(true);
+    when(connectionContext.isCloudFetchEnabled()).thenReturn(true);
     when(session.getSessionInfo()).thenReturn(SESSION_INFO);
     TSparkArrowTypes arrowNativeTypes =
         new TSparkArrowTypes()
@@ -604,7 +697,8 @@ public class DatabricksThriftServiceClientTest {
             .setTimestampAsArrow(true);
     TExecuteStatementReq executeStatementReq =
         new TExecuteStatementReq()
-            .setStatement("SHOW FUNCTIONS IN CATALOG catalog1 SCHEMA LIKE 'testSchema' LIKE 'test'")
+            .setStatement(
+                "SHOW FUNCTIONS IN CATALOG `catalog1` SCHEMA LIKE 'testSchema' LIKE 'test'")
             .setSessionHandle(SESSION_HANDLE)
             .setCanReadArrowResult(true)
             .setCanDecompressLZ4Result(true)

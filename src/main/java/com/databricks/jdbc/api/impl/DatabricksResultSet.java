@@ -1,16 +1,18 @@
 package com.databricks.jdbc.api.impl;
 
 import static com.databricks.jdbc.common.DatabricksJdbcConstants.EMPTY_STRING;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.ARRAY;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.MAP;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.STRUCT;
-import static com.databricks.jdbc.common.util.DatabricksTypeUtil.VARIANT;
+import static com.databricks.jdbc.common.util.DatabricksThriftUtil.getArrowMetadata;
+import static com.databricks.jdbc.common.util.DatabricksTypeUtil.*;
 
 import com.databricks.jdbc.api.IDatabricksResultSet;
 import com.databricks.jdbc.api.IExecutionStatus;
 import com.databricks.jdbc.api.impl.arrow.ArrowStreamResult;
+import com.databricks.jdbc.api.impl.arrow.ChunkProvider;
+import com.databricks.jdbc.api.impl.arrow.LazyThriftInlineArrowResult;
+import com.databricks.jdbc.api.impl.arrow.StreamingInlineArrowResult;
 import com.databricks.jdbc.api.impl.converters.ConverterHelper;
 import com.databricks.jdbc.api.impl.converters.ObjectConverter;
+import com.databricks.jdbc.api.impl.thrift.StreamingColumnarResult;
 import com.databricks.jdbc.api.impl.volume.VolumeOperationResult;
 import com.databricks.jdbc.api.internal.IDatabricksResultSetInternal;
 import com.databricks.jdbc.api.internal.IDatabricksSession;
@@ -26,12 +28,9 @@ import com.databricks.jdbc.exception.DatabricksValidationException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.client.thrift.generated.TFetchResultsResp;
-import com.databricks.jdbc.model.core.ColumnMetadata;
-import com.databricks.jdbc.model.core.ResultData;
-import com.databricks.jdbc.model.core.ResultManifest;
-import com.databricks.jdbc.model.core.StatementStatus;
+import com.databricks.jdbc.model.core.*;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
-import com.databricks.jdbc.telemetry.latency.TelemetryCollector;
+import com.databricks.jdbc.telemetry.TelemetryHelper;
 import com.databricks.sdk.support.ToStringer;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.InputStream;
@@ -44,6 +43,7 @@ import java.time.*;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.http.entity.InputStreamEntity;
 
@@ -153,10 +153,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       this.executionResult =
           ExecutionResultFactory.getResultSet(resultsResp, session, parentStatement);
       long rowSize = executionResult.getRowCount();
-      List<String> arrowMetadata = null;
-      if (executionResult instanceof ArrowStreamResult) {
-        arrowMetadata = ((ArrowStreamResult) executionResult).getArrowMetadata();
-      }
+      List<String> arrowMetadata = getArrowMetadata(resultsResp.getResultSetMetadata());
       this.resultSetMetaData =
           new DatabricksResultSetMetaData(
               statementId,
@@ -269,9 +266,8 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   public boolean next() throws SQLException {
     checkIfClosed();
     boolean hasNext = this.executionResult.next();
-    TelemetryCollector.getInstance()
-        .recordResultSetIteration(
-            statementId.toSQLExecStatementId(), resultSetMetaData.getChunkCount(), hasNext);
+    TelemetryHelper.recordResultSetIteration(
+        parentStatement, statementId, resultSetMetaData.getChunkCount(), hasNext);
     return hasNext;
   }
 
@@ -480,13 +476,13 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   }
 
   /**
-   * Checks if the given type name represents a complex type (ARRAY, MAP, or STRUCT).
+   * Checks if the given type name represents a geospatial type (GEOMETRY or GEOGRAPHY).
    *
    * @param typeName The type name to check
-   * @return true if the type name starts with ARRAY, MAP, or STRUCT, false otherwise
+   * @return true if the type name starts with GEOMETRY or GEOGRAPHY, false otherwise
    */
-  private static boolean isComplexType(String typeName) {
-    return typeName.startsWith(ARRAY) || typeName.startsWith(MAP) || typeName.startsWith(STRUCT);
+  private static boolean isGeospatialType(String typeName) {
+    return typeName.startsWith(GEOMETRY) || typeName.startsWith(GEOGRAPHY);
   }
 
   @Override
@@ -514,23 +510,28 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   }
 
   private Object handleComplexDataTypes(Object obj, String columnName)
-      throws DatabricksParsingException {
-    if (complexDatatypeSupport) return obj;
+      throws DatabricksSQLException {
     if (resultSetType == ResultSetType.SEA_INLINE) {
-      return handleComplexDataTypesForSEAInline(obj, columnName);
+      obj = convertToComplexDataTypesForSEAInline(obj, columnName);
     }
-    return obj.toString();
+    return complexDatatypeSupport ? obj : obj.toString();
   }
 
-  private Object handleComplexDataTypesForSEAInline(Object obj, String columnName)
-      throws DatabricksParsingException {
+  private Object convertToComplexDataTypesForSEAInline(Object obj, String columnName)
+      throws DatabricksSQLException {
     ComplexDataTypeParser parser = new ComplexDataTypeParser();
     if (columnName.startsWith(ARRAY)) {
-      return parser.parseJsonStringToDbArray(obj.toString(), columnName).toString();
+      return parser.parseJsonStringToDbArray(obj.toString(), columnName);
     } else if (columnName.startsWith(MAP)) {
-      return parser.parseJsonStringToDbMap(obj.toString(), columnName).toString();
+      return parser.parseJsonStringToDbMap(obj.toString(), columnName);
     } else if (columnName.startsWith(STRUCT)) {
-      return parser.parseJsonStringToDbStruct(obj.toString(), columnName).toString();
+      return parser.parseJsonStringToDbStruct(obj.toString(), columnName);
+    } else if (columnName.startsWith(GEOMETRY)) {
+      return ConverterHelper.getConverterForColumnType(Types.OTHER, GEOMETRY)
+          .toDatabricksGeometry(obj);
+    } else if (columnName.startsWith(GEOGRAPHY)) {
+      return ConverterHelper.getConverterForColumnType(Types.OTHER, GEOGRAPHY)
+          .toDatabricksGeography(obj);
     }
     throw new DatabricksParsingException(
         "Unexpected metadata format. Type is not a COMPLEX: " + columnName,
@@ -594,12 +595,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   /**
    * {@inheritDoc}
    *
-   * <p><b>Limitation:</b> For lazy-loaded result sets ({@link LazyThriftResult}), particularly
-   * those using {@link
-   * com.databricks.jdbc.model.client.thrift.generated.TSparkRowSetType#COLUMN_BASED_SET}, this
-   * method cannot reliably determine the cursor position. The total row count remains unknown until
-   * all rows are fetched, preventing accurate detection of whether the cursor is after the last
-   * row. This is specific to Databricks JDBC dialect.
+   * <p><b>Limitation:</b> For lazy/streaming result sets ({@link LazyThriftResult}, {@link
+   * StreamingColumnarResult}, {@link LazyThriftInlineArrowResult}, {@link
+   * StreamingInlineArrowResult}), this method cannot reliably determine the cursor position. The
+   * total row count remains unknown until all rows are fetched, preventing accurate detection of
+   * whether the cursor is after the last row. This is specific to Databricks JDBC dialect.
    */
   @Override
   public boolean isAfterLast() throws SQLException {
@@ -619,8 +619,10 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
    * <p>This method uses different strategies based on the result set type:
    *
    * <ul>
-   *   <li>For {@link LazyThriftResult} instances: Checks if there are no more rows available (using
-   *       {@code hasNext()}), since the total row count is unknown until all rows are fetched.
+   *   <li>For lazy/streaming result types ({@link LazyThriftResult}, {@link
+   *       StreamingColumnarResult}, {@link LazyThriftInlineArrowResult}, {@link
+   *       StreamingInlineArrowResult}): Checks if there are no more rows available (using {@code
+   *       hasNext()}), since the total row count is unknown until all rows are fetched.
    *   <li>For other result types: Compares the current row position against the known total row
    *       count.
    * </ul>
@@ -631,7 +633,10 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   @Override
   public boolean isLast() throws SQLException {
     checkIfClosed();
-    if (executionResult instanceof LazyThriftResult) {
+    if (executionResult instanceof LazyThriftResult
+        || executionResult instanceof StreamingColumnarResult
+        || executionResult instanceof LazyThriftInlineArrowResult
+        || executionResult instanceof StreamingInlineArrowResult) {
       return executionResult.getCurrentRow() >= 0 && !executionResult.hasNext();
     }
     return executionResult.getCurrentRow() == resultSetMetaData.getTotalRows() - 1;
@@ -1258,11 +1263,12 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   }
 
   /**
-   * Retrieves the SQL `Map` from the specified column index in the result set.
+   * Retrieves the SQL {@code Map} from the specified column index in the result set.
    *
    * @param columnIndex the index of the column in the result set (1-based)
-   * @return a `Map<String, Object>` if the column contains a map; `null` if the value is SQL `NULL`
-   * @throws SQLException if the column is not of `MAP` type or if any SQL error occurs
+   * @return a {@code Map<String, Object>} if the column contains a map; {@code null} if the value
+   *     is SQL {@code NULL}
+   * @throws SQLException if the column is not of {@code MAP} type or if any SQL error occurs
    */
   @Override
   public Map getMap(int columnIndex) throws SQLException {
@@ -1969,7 +1975,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       return defaultValue.get();
     }
     int columnType = resultSetMetaData.getColumnType(columnIndex);
-    ObjectConverter converter = ConverterHelper.getConverterForSqlType(columnType);
+    String columnTypeName = resultSetMetaData.getColumnTypeName(columnIndex);
+
+    // Use metadata-aware converter selection for proper handling of databricks-specific types
+    ObjectConverter converter =
+        ConverterHelper.getConverterForColumnType(columnType, columnTypeName);
     return convertMethod.apply(converter, obj);
   }
 
@@ -1984,6 +1994,14 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       return bigDecimal;
     }
     return bigDecimal.setScale(scale, RoundingMode.HALF_UP);
+  }
+
+  @VisibleForTesting
+  public Optional<ChunkProvider> getChunkProvider() {
+    if (executionResult instanceof ArrowStreamResult) {
+      return Optional.ofNullable(((ArrowStreamResult) executionResult).getChunkProvider());
+    }
+    return Optional.empty();
   }
 
   @Override

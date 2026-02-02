@@ -1,18 +1,19 @@
 package com.databricks.jdbc.telemetry;
 
+import static com.databricks.jdbc.common.util.JsonUtil.getTelemetryMapper;
+
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
 import com.databricks.jdbc.common.DatabricksJdbcConstants;
 import com.databricks.jdbc.common.util.HttpUtil;
 import com.databricks.jdbc.dbclient.IDatabricksHttpClient;
 import com.databricks.jdbc.dbclient.impl.http.DatabricksHttpClientFactory;
 import com.databricks.jdbc.dbclient.impl.sqlexec.PathConstants;
+import com.databricks.jdbc.exception.DatabricksTelemetryException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.telemetry.TelemetryRequest;
 import com.databricks.jdbc.model.telemetry.TelemetryResponse;
 import com.databricks.sdk.core.DatabricksConfig;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
@@ -30,8 +31,6 @@ public class TelemetryPushClient implements ITelemetryPushClient {
   private final boolean isAuthenticated;
   private final IDatabricksConnectionContext connectionContext;
   private final DatabricksConfig databricksConfig;
-  private final ObjectMapper objectMapper =
-      new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
   public TelemetryPushClient(
       boolean isAuthenticated,
@@ -53,7 +52,7 @@ public class TelemetryPushClient implements ITelemetryPushClient {
     String uri = new URIBuilder(connectionContext.getHostUrl()).setPath(path).toString();
     HttpPost post = new HttpPost(uri);
     post.setEntity(
-        new StringEntity(objectMapper.writeValueAsString(request), StandardCharsets.UTF_8));
+        new StringEntity(getTelemetryMapper().writeValueAsString(request), StandardCharsets.UTF_8));
     DatabricksJdbcConstants.JSON_HTTP_HEADERS.forEach(post::addHeader);
     Map<String, String> authHeaders =
         isAuthenticated ? databricksConfig.authenticate() : Collections.emptyMap();
@@ -63,11 +62,16 @@ public class TelemetryPushClient implements ITelemetryPushClient {
       if (!HttpUtil.isSuccessfulHttpResponse(response)) {
         LOGGER.trace(
             "Failed to push telemetry logs with error response: {}", response.getStatusLine());
-        return;
+        if (connectionContext.isTelemetryCircuitBreakerEnabled()) {
+          throw new DatabricksTelemetryException(
+              "Telemetry push failed with response: " + response.getStatusLine());
+        } else {
+          return;
+        }
       }
       TelemetryResponse telResponse =
-          objectMapper.readValue(
-              EntityUtils.toString(response.getEntity()), TelemetryResponse.class);
+          getTelemetryMapper()
+              .readValue(EntityUtils.toString(response.getEntity()), TelemetryResponse.class);
       LOGGER.trace(
           "Pushed Telemetry logs with request-Id {} with events {} with error count {}",
           response.getFirstHeader(REQUEST_ID_HEADER),
@@ -87,9 +91,9 @@ public class TelemetryPushClient implements ITelemetryPushClient {
       LOGGER.debug(
           "Failed to push telemetry logs with error: {}, request: {}",
           e.getMessage(),
-          objectMapper.writeValueAsString(request));
+          getTelemetryMapper().writeValueAsString(request));
       if (connectionContext.isTelemetryCircuitBreakerEnabled()) {
-        throw e; // Re-throw to allow circuit breaker to handle it
+        throw new DatabricksTelemetryException("Exception while pushing telemetry logs", e);
       }
     }
   }

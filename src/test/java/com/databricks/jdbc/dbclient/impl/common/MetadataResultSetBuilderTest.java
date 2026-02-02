@@ -2,11 +2,11 @@ package com.databricks.jdbc.dbclient.impl.common;
 
 import static com.databricks.jdbc.common.MetadataResultConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.databricks.jdbc.api.impl.DatabricksResultSet;
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
+import com.databricks.jdbc.api.internal.IDatabricksSession;
 import com.databricks.jdbc.common.util.DatabricksThreadContextHolder;
 import com.databricks.jdbc.model.core.ResultColumn;
 import java.sql.ResultSet;
@@ -481,6 +481,89 @@ public class MetadataResultSetBuilderTest {
   }
 
   @Test
+  void testGetTablesResultSortingInSeaMode() throws SQLException {
+    // Create mock DatabricksResultSet with rows in unsorted order
+    DatabricksResultSet mockResultSet = mock(DatabricksResultSet.class, withSettings().lenient());
+    java.sql.ResultSetMetaData mockMetaData = mock(java.sql.ResultSetMetaData.class);
+    when(mockMetaData.getColumnCount()).thenReturn(TABLE_COLUMNS.size());
+    when(mockResultSet.getMetaData()).thenReturn(mockMetaData);
+
+    // Return 4 rows in unsorted order, then false
+    when(mockResultSet.next())
+        .thenReturn(true)
+        .thenReturn(true)
+        .thenReturn(true)
+        .thenReturn(true)
+        .thenReturn(false);
+
+    // Stub all TABLE_COLUMNS to return null by default (some columns aren't in resultset)
+    for (ResultColumn resultColumn : TABLE_COLUMNS) {
+      when(mockResultSet.getObject(resultColumn.getResultSetColumnName())).thenReturn(null);
+    }
+
+    // Set up rows in deliberately unsorted order to verify sorting works
+    // Expected sort order: TABLE_TYPE, TABLE_CAT, TABLE_SCHEM, TABLE_NAME
+    // Row data uses ResultColumn.getResultSetColumnName() values
+    when(mockResultSet.getObject(CATALOG_COLUMN.getResultSetColumnName())) // TABLE_CAT
+        .thenReturn("catalog_b")
+        .thenReturn("catalog_a")
+        .thenReturn("catalog_a")
+        .thenReturn("catalog_a");
+    when(mockResultSet.getObject(SCHEMA_COLUMN.getResultSetColumnName())) // TABLE_SCHEM
+        .thenReturn("schema_z")
+        .thenReturn("schema_a")
+        .thenReturn("schema_b")
+        .thenReturn("schema_a");
+    when(mockResultSet.getObject(TABLE_NAME_COLUMN.getResultSetColumnName())) // TABLE_NAME
+        .thenReturn("table_x")
+        .thenReturn("table_b")
+        .thenReturn("table_a")
+        .thenReturn("table_a");
+    when(mockResultSet.getObject(TABLE_TYPE_COLUMN.getResultSetColumnName())) // TABLE_TYPE
+        .thenReturn("VIEW")
+        .thenReturn("TABLE")
+        .thenReturn("TABLE")
+        .thenReturn("VIEW");
+
+    // Call SEA mode method with both TABLE and VIEW types
+    String[] tableTypes = new String[] {"TABLE", "VIEW"};
+    ResultSet resultSet = metadataResultSetBuilder.getTablesResult(mockResultSet, tableTypes);
+
+    // Verify sorting: TABLE_TYPE first, then TABLE_CAT, TABLE_SCHEM, TABLE_NAME
+    // Expected order after sorting:
+    // 1. TABLE, catalog_a, schema_a, table_b
+    // 2. TABLE, catalog_a, schema_b, table_a
+    // 3. VIEW, catalog_a, schema_a, table_a
+    // 4. VIEW, catalog_b, schema_z, table_x
+
+    assertTrue(resultSet.next());
+    assertEquals("TABLE", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_a", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_a", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_b", resultSet.getString("TABLE_NAME"));
+
+    assertTrue(resultSet.next());
+    assertEquals("TABLE", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_a", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_b", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_a", resultSet.getString("TABLE_NAME"));
+
+    assertTrue(resultSet.next());
+    assertEquals("VIEW", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_a", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_a", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_a", resultSet.getString("TABLE_NAME"));
+
+    assertTrue(resultSet.next());
+    assertEquals("VIEW", resultSet.getString("TABLE_TYPE"));
+    assertEquals("catalog_b", resultSet.getString("TABLE_CAT"));
+    assertEquals("schema_z", resultSet.getString("TABLE_SCHEM"));
+    assertEquals("table_x", resultSet.getString("TABLE_NAME"));
+
+    assertFalse(resultSet.next());
+  }
+
+  @Test
   void testComplexTypesReturnVarcharWhenSupportDisabled() throws SQLException {
     when(connectionContext.isComplexDatatypeSupportEnabled()).thenReturn(false);
 
@@ -644,5 +727,43 @@ public class MetadataResultSetBuilderTest {
     assertTrue(tableTypes.contains("TABLE"));
     assertTrue(tableTypes.contains("VIEW"));
     assertFalse(tableTypes.contains("METRIC_VIEW"));
+  }
+
+  @Test
+  void shouldAllowCatalogAccessWhenMultipleCatalogSupportEnabled() throws SQLException {
+    when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(true);
+    IDatabricksSession session = mock(IDatabricksSession.class);
+
+    assertTrue(metadataResultSetBuilder.shouldAllowCatalogAccess("cat_a", "cat_b", session));
+    verify(session, never()).getCurrentCatalog();
+  }
+
+  @Test
+  void shouldAllowCatalogAccessWhenCatalogIsNull() throws SQLException {
+    when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(false);
+    IDatabricksSession session = mock(IDatabricksSession.class);
+
+    assertTrue(metadataResultSetBuilder.shouldAllowCatalogAccess(null, "cat_b", session));
+    verify(session, never()).getCurrentCatalog();
+  }
+
+  @Test
+  void shouldAllowCatalogAccessWhenCurrentCatalogMatchesSession() throws SQLException {
+    when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(false);
+    IDatabricksSession session = mock(IDatabricksSession.class);
+    when(session.getCurrentCatalog()).thenReturn("main");
+
+    assertTrue(metadataResultSetBuilder.shouldAllowCatalogAccess("main", null, session));
+    verify(session).getCurrentCatalog();
+  }
+
+  @Test
+  void shouldDenyCatalogAccessWhenCatalogDiffers() throws SQLException {
+    when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(false);
+    IDatabricksSession session = mock(IDatabricksSession.class);
+    when(session.getCurrentCatalog()).thenReturn("main");
+
+    assertFalse(metadataResultSetBuilder.shouldAllowCatalogAccess("other", null, session));
+    verify(session).getCurrentCatalog();
   }
 }

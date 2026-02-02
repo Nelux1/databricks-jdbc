@@ -95,6 +95,7 @@ public enum DatabricksJdbcUrlParams {
       "1"), // Note : telemetry enablement also depends on the server flag.
   TELEMETRY_BATCH_SIZE("TelemetryBatchSize", "Batch size for telemetry", "200"),
   MAX_BATCH_SIZE("MaxBatchSize", "Maximum batch size", "500"),
+  BATCH_INSERT_SIZE("BatchInsertSize", "Maximum number of rows per batch insert execution", "1000"),
   ALLOWED_VOLUME_INGESTION_PATHS("VolumeOperationAllowedLocalPaths", ""),
   ALLOWED_STAGING_INGESTION_PATHS("StagingAllowedLocalPaths", ""),
   UC_INGESTION_RETRIABLE_HTTP_CODE(
@@ -122,6 +123,10 @@ public enum DatabricksJdbcUrlParams {
   ENABLE_COMPLEX_DATATYPE_SUPPORT(
       "EnableComplexDatatypeSupport",
       "flag to enable native support of complex data types as java objects",
+      "0"),
+  ENABLE_GEOSPATIAL_SUPPORT(
+      "EnableGeoSpatialSupport",
+      "flag to enable native support of GEOMETRY and GEOGRAPHY data types. Requires EnableComplexDatatypeSupport=1",
       "0"),
   ROWS_FETCHED_PER_BLOCK(
       "RowsFetchedPerBlock",
@@ -164,10 +169,54 @@ public enum DatabricksJdbcUrlParams {
       "EnableSQLValidationForIsValid",
       "Enable SQL query execution for connection validation in isValid() method",
       "0"),
-  IGNORE_TRANSACTIONS("IgnoreTransactions", "Ignore transaction-related method calls", "0"),
+  IGNORE_TRANSACTIONS("IgnoreTransactions", "Ignore transaction-related method calls", "1"),
+  FETCH_AUTOCOMMIT_FROM_SERVER(
+      "FetchAutoCommitFromServer",
+      "Fetch auto-commit state from server using SQL query instead of using cached value",
+      "0"),
   ENABLE_METRIC_VIEW_METADATA("EnableMetricViewMetadata", "Enable metric view metadata", "0"),
   ENABLE_MULTIPLE_CATALOG_SUPPORT(
-      "enableMultipleCatalogSupport", "Enable multiple catalog support", "1");
+      "enableMultipleCatalogSupport", "Enable multiple catalog support", "1"),
+  ENABLE_CLOUD_FETCH("EnableQueryResultDownload", "Enable Cloud Fetch", "1"),
+  ENABLE_SEA_SYNC_METADATA(
+      "EnableSeaSyncMetadata",
+      "Enable x-databricks-sea-can-run-fully-sync header for synchronous metadata requests in SEA mode",
+      "1"),
+  DISABLE_OAUTH_REFRESH_TOKEN(
+      "DisableOauthRefreshToken",
+      "Disable requesting OAuth refresh tokens (omit offline_access unless explicitly provided)",
+      "1"),
+  ENABLE_TOKEN_FEDERATION(
+      "EnableTokenFederation", "Enable token federation for authentication", "1"),
+  ENABLE_STREAMING_CHUNK_PROVIDER(
+      "EnableStreamingChunkProvider",
+      "Enable streaming chunk provider for result fetching (experimental)",
+      "0"),
+  ENABLE_INLINE_STREAMING(
+      "EnableInlineStreaming",
+      "Enable streaming mode with background prefetching for inline results (Thrift columnar and inline Arrow)",
+      "1"),
+  THRIFT_MAX_BATCHES_IN_MEMORY(
+      "ThriftMaxBatchesInMemory",
+      "Maximum number of batches to keep in memory for Thrift streaming (sliding window size)",
+      "3"),
+  LINK_PREFETCH_WINDOW(
+      "LinkPrefetchWindow",
+      "Number of chunk links to prefetch ahead of consumption. "
+          + "Higher values reduce latency by having links ready sooner. "
+          + "Lower values reduce risk of link expiry for slow processing workloads",
+      "128"),
+  API_RETRIABLE_HTTP_CODES(
+      "ApiRetriableHttpCodes",
+      "Comma-separated list of HTTP status codes that should be retried irrespective of Retry-After header.",
+      ""),
+  API_RETRY_TIMEOUT(
+      "ApiRetryTimeout", "Timeout for retrying API retriable codes in seconds", "300"),
+  NON_ROWCOUNT_QUERY_PREFIXES(
+      "NonRowcountQueryPrefixes",
+      "Comma-separated list of query prefixes (like INSERT,UPDATE,DELETE) that should return result sets instead of row counts",
+      "");
+
   private final String paramName;
   private final String defaultValue;
   private final String description;

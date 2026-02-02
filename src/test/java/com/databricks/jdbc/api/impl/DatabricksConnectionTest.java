@@ -61,6 +61,10 @@ public class DatabricksConnectionTest {
               .collect(Collectors.joining(";")));
   private static final String IGNORE_TRANSACTIONS_JDBC_URL =
       "jdbc:databricks://sample-host.18.azuredatabricks.net:4423/default;transportMode=http;ssl=1;AuthMech=3;httpPath=/sql/1.0/warehouses/99999999;IgnoreTransactions=1";
+  private static final String TRANSACTIONS_ENABLED_JDBC_URL =
+      String.format(
+          "jdbc:databricks://sample-host.18.azuredatabricks.net:4423/%s;transportMode=http;ssl=1;AuthMech=3;httpPath=/sql/1.0/warehouses/99999999;ConnCatalog=%s;ConnSchema=%s;logLevel=FATAL;IgnoreTransactions=0",
+          SCHEMA, CATALOG, SCHEMA);
   private static final ImmutableSessionInfo IMMUTABLE_SESSION_INFO =
       ImmutableSessionInfo.builder().computeResource(warehouse).sessionId(SESSION_ID).build();
   @Mock DatabricksSdkClient databricksClient;
@@ -69,11 +73,14 @@ public class DatabricksConnectionTest {
   private static DatabricksConnection connection;
 
   private static IDatabricksConnectionContext connectionContext;
+  private static IDatabricksConnectionContext transactionsEnabledContext;
 
   @BeforeAll
   static void setup() throws DatabricksSQLException {
     connectionContext =
         DatabricksConnectionContext.parse(CATALOG_SCHEMA_JDBC_URL, new Properties());
+    transactionsEnabledContext =
+        DatabricksConnectionContext.parse(TRANSACTIONS_ENABLED_JDBC_URL, new Properties());
   }
 
   @Test
@@ -101,7 +108,7 @@ public class DatabricksConnectionTest {
     connection = new DatabricksConnection(connectionContext, databricksClient);
     connection.open();
     when(databricksClient.executeStatement(
-            eq("SET CATALOG hive_metastore"),
+            eq("SET CATALOG `hive_metastore`"),
             eq(new Warehouse(WAREHOUSE_ID)),
             eq(new HashMap<>()),
             eq(StatementType.SQL),
@@ -109,7 +116,7 @@ public class DatabricksConnectionTest {
             any()))
         .thenReturn(resultSet);
     when(databricksClient.executeStatement(
-            eq("USE SCHEMA default"),
+            eq("USE SCHEMA `default`"),
             eq(new Warehouse(WAREHOUSE_ID)),
             eq(new HashMap<>()),
             eq(StatementType.SQL),
@@ -122,6 +129,56 @@ public class DatabricksConnectionTest {
     assertEquals(connection.getSchema(), SCHEMA);
     connection.setSchema(DEFAULT_SCHEMA);
     assertEquals(connection.getSchema(), DEFAULT_SCHEMA);
+  }
+
+  @Test
+  public void testSetCatalogAndSchemaWithHyphenatedIdentifiers() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(connectionContext, databricksClient);
+    connection.open();
+
+    String catalogWithHyphen = "catalog-with-hyphen";
+    when(databricksClient.executeStatement(
+            eq("SET CATALOG `" + catalogWithHyphen + "`"),
+            eq(new Warehouse(WAREHOUSE_ID)),
+            eq(new HashMap<>()),
+            eq(StatementType.SQL),
+            any(),
+            any()))
+        .thenReturn(resultSet);
+    connection.setCatalog(catalogWithHyphen);
+    assertEquals(connection.getCatalog(), catalogWithHyphen);
+
+    String schemaWithHyphen = "schema-with-hyphen";
+    when(databricksClient.executeStatement(
+            eq("USE SCHEMA `" + schemaWithHyphen + "`"),
+            eq(new Warehouse(WAREHOUSE_ID)),
+            eq(new HashMap<>()),
+            eq(StatementType.SQL),
+            any(),
+            any()))
+        .thenReturn(resultSet);
+    connection.setSchema(schemaWithHyphen);
+    assertEquals(connection.getSchema(), schemaWithHyphen);
+
+    verify(databricksClient)
+        .executeStatement(
+            eq("SET CATALOG `" + catalogWithHyphen + "`"),
+            eq(new Warehouse(WAREHOUSE_ID)),
+            eq(new HashMap<>()),
+            eq(StatementType.SQL),
+            any(),
+            any());
+    verify(databricksClient)
+        .executeStatement(
+            eq("USE SCHEMA `" + schemaWithHyphen + "`"),
+            eq(new Warehouse(WAREHOUSE_ID)),
+            eq(new HashMap<>()),
+            eq(StatementType.SQL),
+            any(),
+            any());
   }
 
   @Test
@@ -156,7 +213,7 @@ public class DatabricksConnectionTest {
     connection = new DatabricksConnection(connectionContext, databricksClient);
     connection.open();
     when(databricksClient.executeStatement(
-            eq("SET CATALOG invalid catalog"),
+            eq("SET CATALOG `invalid catalog`"),
             eq(new Warehouse(WAREHOUSE_ID)),
             eq(new HashMap<>()),
             eq(StatementType.SQL),
@@ -167,7 +224,7 @@ public class DatabricksConnectionTest {
                 "[PARSE_SYNTAX_ERROR] Syntax error at or near 'schema'",
                 DatabricksDriverErrorCode.EXECUTE_STATEMENT_FAILED));
     when(databricksClient.executeStatement(
-            eq("USE SCHEMA invalid schema"),
+            eq("USE SCHEMA `invalid schema`"),
             eq(new Warehouse(WAREHOUSE_ID)),
             eq(new HashMap<>()),
             eq(StatementType.SQL),
@@ -363,10 +420,6 @@ public class DatabricksConnectionTest {
         DatabricksSQLFeatureNotImplementedException.class, () -> connection.prepareCall(SQL));
     assertThrows(DatabricksSQLFeatureNotSupportedException.class, () -> connection.nativeSQL(SQL));
     assertThrows(
-        DatabricksSQLFeatureNotSupportedException.class, () -> connection.setAutoCommit(false));
-    assertThrows(DatabricksSQLFeatureNotImplementedException.class, connection::commit);
-    assertThrows(DatabricksSQLFeatureNotImplementedException.class, connection::rollback);
-    assertThrows(
         DatabricksSQLFeatureNotImplementedException.class,
         () -> connection.prepareCall(SQL, 10, 10));
     assertThrows(
@@ -395,9 +448,9 @@ public class DatabricksConnectionTest {
               ResultSet.CONCUR_READ_ONLY,
               ResultSet.CLOSE_CURSORS_AT_COMMIT);
         });
-    assertThrows(
-        DatabricksSQLFeatureNotImplementedException.class, () -> connection.setSavepoint("1"));
-    assertThrows(DatabricksSQLFeatureNotImplementedException.class, connection::setSavepoint);
+    // With default IgnoreTransactions=1, savepoint methods return null (no-op)
+    assertNull(connection.setSavepoint("1"));
+    assertNull(connection.setSavepoint());
     assertThrows(DatabricksSQLFeatureNotImplementedException.class, connection::createClob);
     assertThrows(DatabricksSQLFeatureNotImplementedException.class, connection::createBlob);
     assertThrows(DatabricksSQLFeatureNotImplementedException.class, connection::createNClob);
@@ -408,10 +461,9 @@ public class DatabricksConnectionTest {
     assertThrows(
         DatabricksSQLFeatureNotSupportedException.class,
         () -> connection.prepareStatement(SQL, new String[0]));
-    assertThrows(
-        DatabricksSQLFeatureNotImplementedException.class, () -> connection.rollback(null));
-    assertThrows(
-        DatabricksSQLFeatureNotImplementedException.class, () -> connection.releaseSavepoint(null));
+    // With default IgnoreTransactions=1, these are no-ops
+    assertDoesNotThrow(() -> connection.rollback(null));
+    assertDoesNotThrow(() -> connection.releaseSavepoint(null));
     assertThrows(
         DatabricksSQLFeatureNotSupportedException.class,
         () -> connection.setNetworkTimeout(null, 1));
@@ -453,7 +505,7 @@ public class DatabricksConnectionTest {
     assertDoesNotThrow(() -> connection.createStatement());
     assertNull(connection.getWarnings());
     assertTrue(connection.getAutoCommit());
-    assertEquals(connection.getTransactionIsolation(), Connection.TRANSACTION_READ_UNCOMMITTED);
+    assertEquals(connection.getTransactionIsolation(), Connection.TRANSACTION_REPEATABLE_READ);
     connection.close();
   }
 
@@ -462,7 +514,7 @@ public class DatabricksConnectionTest {
     connection = new DatabricksConnection(connectionContext, databricksClient);
     connection.open();
     assertDoesNotThrow(
-        () -> connection.setTransactionIsolation(Connection.TRANSACTION_READ_UNCOMMITTED));
+        () -> connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ));
     assertThrows(
         DatabricksSQLFeatureNotSupportedException.class,
         () -> connection.setTransactionIsolation(10));
@@ -543,28 +595,6 @@ public class DatabricksConnectionTest {
   }
 
   @Test
-  public void testIgnoreTransactionsDisabled() throws Exception {
-    when(databricksClient.createSession(
-            new Warehouse(WAREHOUSE_ID), null, DEFAULT_SCHEMA, new HashMap<>()))
-        .thenReturn(IMMUTABLE_SESSION_INFO);
-
-    IDatabricksConnectionContext context =
-        DatabricksConnectionContext.parse(JDBC_URL, new Properties());
-    connection = new DatabricksConnection(context, databricksClient);
-    connection.open();
-
-    assertFalse(context.getIgnoreTransactions());
-
-    assertThrows(
-        DatabricksSQLFeatureNotSupportedException.class, () -> connection.setAutoCommit(false));
-    assertThrows(DatabricksSQLFeatureNotImplementedException.class, () -> connection.commit());
-    assertThrows(
-        DatabricksSQLFeatureNotImplementedException.class, () -> connection.setSavepoint());
-
-    connection.close();
-  }
-
-  @Test
   public void testIgnoreTransactionsEnabled() throws Exception {
     when(databricksClient.createSession(
             new Warehouse(WAREHOUSE_ID), null, DEFAULT_SCHEMA, new HashMap<>()))
@@ -613,5 +643,451 @@ public class DatabricksConnectionTest {
     Map<String, String> sessionConfigsDefault = connectionContextDefault.getSessionConfigs();
     assertFalse(
         sessionConfigsDefault.containsKey("spark.sql.thriftserver.metadata.metricview.enabled"));
+  }
+
+  // ==================== Transaction API Unit Tests ====================
+
+  @Test
+  public void testSetAutoCommitToFalse() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.execute("SET AUTOCOMMIT = FALSE")).thenReturn(true);
+
+    assertTrue(spyConnection.getAutoCommit());
+
+    spyConnection.setAutoCommit(false);
+
+    verify(mockStatement).execute("SET AUTOCOMMIT = FALSE");
+    verify(mockStatement).close();
+
+    assertFalse(spyConnection.getAutoCommit());
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testSetAutoCommitToTrue() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.execute("SET AUTOCOMMIT = TRUE")).thenReturn(true);
+
+    spyConnection.getSession().setAutoCommit(false);
+    assertFalse(spyConnection.getAutoCommit());
+
+    spyConnection.setAutoCommit(true);
+
+    verify(mockStatement).execute("SET AUTOCOMMIT = TRUE");
+    verify(mockStatement).close();
+
+    assertTrue(spyConnection.getAutoCommit());
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testSetAutoCommitWithServerError() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+
+    SQLException serverError =
+        new SQLException("AUTOCOMMIT_SET_DURING_ACTIVE_TRANSACTION", "25000", 12345); // vendor code
+    when(mockStatement.execute("SET AUTOCOMMIT = FALSE")).thenThrow(serverError);
+
+    SQLException thrown =
+        assertThrows(SQLException.class, () -> spyConnection.setAutoCommit(false));
+
+    assertTrue(thrown.getMessage().contains("AUTOCOMMIT_SET_DURING_ACTIVE_TRANSACTION"));
+    assertEquals("25000", thrown.getSQLState());
+    assertEquals(12345, thrown.getErrorCode()); // Vendor code preserved
+
+    verify(mockStatement).close();
+
+    assertTrue(spyConnection.getAutoCommit());
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testGetAutoCommitReturnsSessionValue() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(connectionContext, databricksClient);
+    connection.open();
+
+    assertTrue(connection.getAutoCommit());
+
+    connection.getSession().setAutoCommit(false);
+
+    assertFalse(connection.getAutoCommit());
+
+    connection.close();
+  }
+
+  @Test
+  public void testCommitSuccess() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.execute("COMMIT")).thenReturn(true);
+
+    spyConnection.commit();
+
+    verify(mockStatement).execute("COMMIT");
+    verify(mockStatement).close();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testCommitWithIgnoreTransactions() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), null, DEFAULT_SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+
+    IDatabricksConnectionContext context =
+        DatabricksConnectionContext.parse(IGNORE_TRANSACTIONS_JDBC_URL, new Properties());
+    connection = new DatabricksConnection(context, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+
+    assertDoesNotThrow(spyConnection::commit);
+
+    verify(spyConnection, never()).createStatement();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testCommitWithServerError() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+
+    SQLException serverError =
+        new SQLException("MULTI_STATEMENT_TRANSACTION_NO_ACTIVE_TRANSACTION", "25000", 54321);
+    when(mockStatement.execute("COMMIT")).thenThrow(serverError);
+
+    SQLException thrown = assertThrows(SQLException.class, spyConnection::commit);
+
+    assertTrue(thrown.getMessage().contains("MULTI_STATEMENT_TRANSACTION_NO_ACTIVE_TRANSACTION"));
+    assertEquals("25000", thrown.getSQLState());
+    assertEquals(54321, thrown.getErrorCode()); // Vendor code preserved
+
+    verify(mockStatement).close();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testRollbackSuccess() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.execute("ROLLBACK")).thenReturn(true);
+
+    spyConnection.rollback();
+
+    verify(mockStatement).execute("ROLLBACK");
+    verify(mockStatement).close();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testRollbackWithIgnoreTransactions() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), null, DEFAULT_SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+
+    IDatabricksConnectionContext context =
+        DatabricksConnectionContext.parse(IGNORE_TRANSACTIONS_JDBC_URL, new Properties());
+    connection = new DatabricksConnection(context, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+
+    assertDoesNotThrow(() -> spyConnection.rollback());
+
+    verify(spyConnection, never()).createStatement();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testRollbackWithServerError() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+
+    SQLException serverError = new SQLException("Unexpected rollback error", "HY000", 99999);
+    when(mockStatement.execute("ROLLBACK")).thenThrow(serverError);
+
+    SQLException thrown = assertThrows(SQLException.class, spyConnection::rollback);
+
+    assertTrue(thrown.getMessage().contains("Unexpected rollback error"));
+    assertEquals("HY000", thrown.getSQLState());
+    assertEquals(99999, thrown.getErrorCode()); // Vendor code preserved
+
+    verify(mockStatement).close();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testTransactionMethodsPreserveExceptionChain() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(transactionsEnabledContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+
+    SQLException rootCause = new SQLException("Root cause", "XX000", 11111);
+    SQLException serverError = new SQLException("Wrapper error", "25000", 22222, rootCause);
+    when(mockStatement.execute("SET AUTOCOMMIT = FALSE")).thenThrow(serverError);
+
+    SQLException thrown =
+        assertThrows(SQLException.class, () -> spyConnection.setAutoCommit(false));
+
+    assertNotNull(thrown.getCause());
+    assertEquals("Wrapper error", thrown.getCause().getMessage());
+    assertEquals(rootCause, thrown.getCause().getCause());
+
+    spyConnection.close();
+  }
+
+  // ==================== FetchAutoCommitFromServer Tests ====================
+
+  @Test
+  public void testGetAutoCommitWithFetchFromServerEnabled_ReturnsTrue() throws SQLException {
+    // Create connection context with FetchAutoCommitFromServer=1
+    String urlWithFetch = CATALOG_SCHEMA_JDBC_URL + ";FetchAutoCommitFromServer=1";
+    IDatabricksConnectionContext contextWithFetch =
+        DatabricksConnectionContext.parse(urlWithFetch, new Properties());
+
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(contextWithFetch, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    ResultSet mockResultSet = mock(ResultSet.class);
+
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.executeQuery("SET AUTOCOMMIT")).thenReturn(mockResultSet);
+    when(mockResultSet.next()).thenReturn(true);
+    when(mockResultSet.getString(1)).thenReturn("true"); // Server returns "true"
+
+    // Call getAutoCommit - should query server
+    boolean result = spyConnection.getAutoCommit();
+
+    // Verify server was queried
+    verify(mockStatement).executeQuery("SET AUTOCOMMIT");
+    verify(mockResultSet).getString(1);
+    verify(mockStatement).close();
+
+    // Verify result is true
+    assertTrue(result);
+
+    // Verify cache was updated
+    assertTrue(spyConnection.getSession().getAutoCommit());
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testGetAutoCommitWithFetchFromServerEnabled_ReturnsFalse() throws SQLException {
+    // Create connection context with FetchAutoCommitFromServer=1
+    String urlWithFetch = CATALOG_SCHEMA_JDBC_URL + ";FetchAutoCommitFromServer=1";
+    IDatabricksConnectionContext contextWithFetch =
+        DatabricksConnectionContext.parse(urlWithFetch, new Properties());
+
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(contextWithFetch, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    ResultSet mockResultSet = mock(ResultSet.class);
+
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.executeQuery("SET AUTOCOMMIT")).thenReturn(mockResultSet);
+    when(mockResultSet.next()).thenReturn(true);
+    when(mockResultSet.getString(1)).thenReturn("false"); // Server returns "false"
+
+    // Call getAutoCommit - should query server
+    boolean result = spyConnection.getAutoCommit();
+
+    // Verify server was queried
+    verify(mockStatement).executeQuery("SET AUTOCOMMIT");
+    verify(mockResultSet).getString(1);
+    verify(mockStatement).close();
+
+    // Verify result is false
+    assertFalse(result);
+
+    // Verify cache was updated
+    assertFalse(spyConnection.getSession().getAutoCommit());
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testGetAutoCommitWithFetchFromServerEnabled_ServerQueryFails() throws SQLException {
+    // Create connection context with FetchAutoCommitFromServer=1
+    String urlWithFetch = CATALOG_SCHEMA_JDBC_URL + ";FetchAutoCommitFromServer=1";
+    IDatabricksConnectionContext contextWithFetch =
+        DatabricksConnectionContext.parse(urlWithFetch, new Properties());
+
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(contextWithFetch, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    SQLException serverError = new SQLException("Server error during SET AUTOCOMMIT query");
+    when(mockStatement.executeQuery("SET AUTOCOMMIT")).thenThrow(serverError);
+
+    // Call getAutoCommit - should throw exception
+    SQLException thrown = assertThrows(DatabricksSQLException.class, spyConnection::getAutoCommit);
+
+    // Verify error message
+    assertTrue(
+        thrown.getMessage().contains("Failed to fetch autoCommit state from server"),
+        "Exception message should indicate fetch failure");
+
+    // Verify statement was closed even after exception
+    verify(mockStatement).close();
+
+    spyConnection.close();
+  }
+
+  // ==================== SetAutoCommit Optimization Tests ====================
+
+  @Test
+  public void testSetAutoCommitSkipsServerCallWhenAlreadyTrue() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(connectionContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+
+    assertTrue(spyConnection.getAutoCommit());
+
+    spyConnection.setAutoCommit(true);
+
+    // Verify createStatement was never called (no server round-trip)
+    verify(spyConnection, never()).createStatement();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testSetAutoCommitSkipsServerCallWhenAlreadyFalse() throws SQLException {
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(connectionContext, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+
+    spyConnection.getSession().setAutoCommit(false);
+    assertFalse(spyConnection.getAutoCommit());
+
+    spyConnection.setAutoCommit(false);
+
+    // Verify createStatement was never called
+    verify(spyConnection, never()).createStatement();
+
+    spyConnection.close();
+  }
+
+  @Test
+  public void testSetAutoCommitDoesNotSkipWithFetchFromServerEnabled() throws SQLException {
+    // Create connection with FetchAutoCommitFromServer=1 and IgnoreTransactions=0
+    String urlWithFetch =
+        CATALOG_SCHEMA_JDBC_URL + ";FetchAutoCommitFromServer=1;IgnoreTransactions=0";
+    IDatabricksConnectionContext contextWithFetch =
+        DatabricksConnectionContext.parse(urlWithFetch, new Properties());
+
+    when(databricksClient.createSession(
+            new Warehouse(WAREHOUSE_ID), CATALOG, SCHEMA, new HashMap<>()))
+        .thenReturn(IMMUTABLE_SESSION_INFO);
+    connection = new DatabricksConnection(contextWithFetch, databricksClient);
+    connection.open();
+
+    DatabricksConnection spyConnection = spy(connection);
+    DatabricksStatement mockStatement = mock(DatabricksStatement.class);
+    doReturn(mockStatement).when(spyConnection).createStatement();
+    when(mockStatement.execute("SET AUTOCOMMIT = TRUE")).thenReturn(true);
+
+    // Even though autoCommit is already true, server should be called
+    spyConnection.setAutoCommit(true);
+
+    // Verify server was called
+    verify(mockStatement).execute("SET AUTOCOMMIT = TRUE");
+
+    spyConnection.close();
   }
 }

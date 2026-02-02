@@ -434,13 +434,26 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void getDefaultTransactionIsolation_returnsExpectedIsolationLevel() throws Exception {
     int defaultTransactionIsolation = metaData.getDefaultTransactionIsolation();
-    assertEquals(Connection.TRANSACTION_READ_UNCOMMITTED, defaultTransactionIsolation);
+    assertEquals(Connection.TRANSACTION_REPEATABLE_READ, defaultTransactionIsolation);
   }
 
   @Test
-  public void supportsTransactions_returnsFalse() throws Exception {
+  public void supportsTransactions_returnsFalseByDefault() throws Exception {
+    // Default IgnoreTransactions=1 means transactions are ignored, so supportsTransactions returns
+    // false
     boolean supportsTransactions = metaData.supportsTransactions();
     assertFalse(supportsTransactions);
+  }
+
+  @Test
+  public void supportsTransactions_returnsTrueWhenTransactionsEnabled() throws Exception {
+    // When IgnoreTransactions=0, transactions are enabled, so supportsTransactions returns true
+    String urlWithTransactionsEnabled = WAREHOUSE_JDBC_URL + ";IgnoreTransactions=0";
+    when(session.getConnectionContext())
+        .thenReturn(
+            DatabricksConnectionContext.parse(urlWithTransactionsEnabled, new Properties()));
+    boolean supportsTransactions = metaData.supportsTransactions();
+    assertTrue(supportsTransactions);
   }
 
   @Test
@@ -813,7 +826,7 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void testGetDriverVersion() throws SQLException {
     String result = metaData.getDriverVersion();
-    assertEquals("3.0.1", result);
+    assertEquals("3.1.1", result);
   }
 
   @Test
@@ -825,7 +838,7 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void testGetDriverMinorVersion() {
     int result = metaData.getDriverMinorVersion();
-    assertEquals(0, result);
+    assertEquals(1, result);
   }
 
   @Test
@@ -1460,9 +1473,10 @@ public class DatabricksDatabaseMetaDataTest {
   @Test
   public void testSupportsTransactionIsolationLevel() throws SQLException {
     assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_NONE));
-    assertTrue(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_UNCOMMITTED));
+    assertFalse(
+        metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_UNCOMMITTED));
     assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_COMMITTED));
-    assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ));
+    assertTrue(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ));
     assertFalse(metaData.supportsTransactionIsolationLevel(Connection.TRANSACTION_SERIALIZABLE));
   }
 

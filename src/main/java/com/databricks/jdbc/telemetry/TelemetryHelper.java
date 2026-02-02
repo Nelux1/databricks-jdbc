@@ -1,8 +1,11 @@
 package com.databricks.jdbc.telemetry;
 
+import static com.databricks.jdbc.common.DatabricksJdbcConstants.QUERY_TAGS;
 import static com.databricks.jdbc.common.util.WildcardUtil.isNullOrEmpty;
 
+import com.databricks.jdbc.api.impl.DatabricksConnection;
 import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
+import com.databricks.jdbc.api.internal.IDatabricksStatementInternal;
 import com.databricks.jdbc.common.DatabricksClientConfiguratorManager;
 import com.databricks.jdbc.common.TelemetryLogLevel;
 import com.databricks.jdbc.common.safe.DatabricksDriverFeatureFlagsContextFactory;
@@ -12,14 +15,18 @@ import com.databricks.jdbc.common.util.ProcessNameUtil;
 import com.databricks.jdbc.common.util.StringUtil;
 import com.databricks.jdbc.dbclient.impl.common.StatementId;
 import com.databricks.jdbc.exception.DatabricksParsingException;
+import com.databricks.jdbc.exception.DatabricksValidationException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
+import com.databricks.jdbc.model.client.thrift.generated.TSparkRowSetType;
 import com.databricks.jdbc.model.telemetry.*;
 import com.databricks.jdbc.model.telemetry.latency.OperationType;
 import com.databricks.jdbc.telemetry.latency.TelemetryCollector;
+import com.databricks.jdbc.telemetry.latency.TelemetryCollectorManager;
 import com.databricks.sdk.core.DatabricksConfig;
 import com.databricks.sdk.core.ProxyConfig;
 import com.databricks.sdk.core.UserAgent;
+import com.databricks.sdk.service.sql.Format;
 import com.google.common.annotations.VisibleForTesting;
 import java.nio.charset.Charset;
 import java.time.Instant;
@@ -28,6 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class TelemetryHelper {
   private static final JdbcLogger LOGGER = JdbcLoggerFactory.getLogger(TelemetryHelper.class);
+  public static final String DEFAULT_HOST = "unknown-host";
   // Cache to store unique DriverConnectionParameters for each connectionUuid
   private static final ConcurrentHashMap<String, DriverConnectionParameters>
       connectionParameterCache = new ConcurrentHashMap<>();
@@ -61,11 +69,10 @@ public class TelemetryHelper {
     if (context == null || context.getTelemetryLogLevel().equals(TelemetryLogLevel.OFF)) {
       return false;
     }
-    if (context != null && context.forceEnableTelemetry()) {
+    if (context.forceEnableTelemetry()) {
       return true;
     }
-    return context != null
-        && context.isTelemetryEnabled()
+    return context.isTelemetryEnabled()
         && DatabricksDriverFeatureFlagsContextFactory.getInstance(context)
             .isFeatureEnabled(TELEMETRY_FEATURE_FLAG_NAME);
   }
@@ -88,12 +95,11 @@ public class TelemetryHelper {
       TelemetryLogLevel logLevel) {
     if (connectionContext == null
         || telemetryDetails == null
-        || logLevel.toInt() <= connectionContext.getTelemetryLogLevel().toInt()) {
+        || logLevel.toInt() > connectionContext.getTelemetryLogLevel().toInt()) {
       // We don't export telemetry logs in the following three scenarios:
       // 1. When the context is not set.
       // 2. When telemetry details are not set.
-      // 3. When the telemetry logLevel configured in the connection context is higher than the
-      // logLevel for the event.
+      // 3. When the event's log level is more verbose than the configured telemetry log level.
       // In any of these cases, export is skipped.
       return;
     }
@@ -147,7 +153,9 @@ public class TelemetryHelper {
     if (statementId == null) {
       telemetryDetails = new StatementTelemetryDetails(null);
     } else {
-      telemetryDetails = TelemetryCollector.getInstance().getOrCreateTelemetryDetails(statementId);
+      TelemetryCollector collector =
+          TelemetryCollectorManager.getInstance().getOrCreateCollector(connectionContext);
+      telemetryDetails = collector.getOrCreateTelemetryDetails(statementId);
     }
     exportTelemetryEvent(connectionContext, telemetryDetails, errorInfo, chunkIndex, logLevel);
   }
@@ -178,46 +186,58 @@ public class TelemetryHelper {
       // This would mean, telemetry data cannot be sent.
       return null;
     }
-    DriverConnectionParameters connectionParameters =
-        new DriverConnectionParameters()
-            .setHostDetails(getHostDetails(hostUrl))
-            .setUseProxy(connectionContext.getUseProxy())
-            .setAuthMech(connectionContext.getAuthMech())
-            .setAuthScope(connectionContext.getAuthScope())
-            .setUseSystemProxy(connectionContext.getUseSystemProxy())
-            .setUseCfProxy(connectionContext.getUseCloudFetchProxy())
-            .setDriverAuthFlow(connectionContext.getAuthFlow())
-            .setDiscoveryModeEnabled(connectionContext.isOAuthDiscoveryModeEnabled())
-            .setDiscoveryUrl(connectionContext.getOAuthDiscoveryURL())
-            .setIdentityFederationClientId(connectionContext.getIdentityFederationClientId())
-            .setUseEmptyMetadata(connectionContext.getUseEmptyMetadata())
-            .setSupportManyParameters(connectionContext.supportManyParameters())
-            .setGoogleCredentialFilePath(connectionContext.getGoogleCredentials())
-            .setGoogleServiceAccount(connectionContext.getGoogleServiceAccount())
-            .setAllowedVolumeIngestionPaths(connectionContext.getVolumeOperationAllowedPaths())
-            .setSocketTimeout(connectionContext.getSocketTimeout())
-            .setStringColumnLength(connectionContext.getDefaultStringColumnLength())
-            .setEnableComplexDatatypeSupport(connectionContext.isComplexDatatypeSupportEnabled())
-            .setAzureWorkspaceResourceId(connectionContext.getAzureWorkspaceResourceId())
-            .setAzureTenantId(connectionContext.getAzureTenantId())
-            .setSslTrustStoreType(connectionContext.getSSLTrustStoreType())
-            .setEnableArrow(connectionContext.shouldEnableArrow())
-            .setEnableDirectResults(connectionContext.getDirectResultMode())
-            .setCheckCertificateRevocation(connectionContext.checkCertificateRevocation())
-            .setAcceptUndeterminedCertificateRevocation(
-                connectionContext.acceptUndeterminedCertificateRevocation())
-            .setDriverMode(connectionContext.getClientType().toString())
-            .setAuthEndpoint(connectionContext.getAuthEndpoint())
-            .setTokenEndpoint(connectionContext.getTokenEndpoint())
-            .setNonProxyHosts(StringUtil.split(connectionContext.getNonProxyHosts()))
-            .setHttpConnectionPoolSize(connectionContext.getHttpConnectionPoolSize())
-            .setEnableSeaHybridResults(connectionContext.isSqlExecHybridResultsEnabled())
-            .setAllowSelfSignedSupport(connectionContext.allowSelfSignedCerts())
-            .setUseSystemTrustStore(connectionContext.useSystemTrustStore())
-            .setRowsFetchedPerBlock(connectionContext.getRowsFetchedPerBlock())
-            .setAsyncPollIntervalMillis(connectionContext.getAsyncExecPollInterval())
-            .setEnableTokenCache(connectionContext.isTokenCacheEnabled())
-            .setHttpPath(connectionContext.getHttpPath());
+    DriverConnectionParameters connectionParameters = new DriverConnectionParameters();
+    try {
+      connectionParameters
+          .setHostDetails(getHostDetails(hostUrl))
+          .setUseProxy(connectionContext.getUseProxy())
+          .setAuthMech(connectionContext.getAuthMech())
+          .setAuthScope(connectionContext.getAuthScope())
+          .setUseSystemProxy(connectionContext.getUseSystemProxy())
+          .setUseCfProxy(connectionContext.getUseCloudFetchProxy())
+          .setDriverAuthFlow(connectionContext.getAuthFlow())
+          .setDiscoveryModeEnabled(connectionContext.isOAuthDiscoveryModeEnabled())
+          .setDiscoveryUrl(connectionContext.getOAuthDiscoveryURL())
+          .setIdentityFederationClientId(connectionContext.getIdentityFederationClientId())
+          .setUseEmptyMetadata(connectionContext.getUseEmptyMetadata())
+          .setSupportManyParameters(connectionContext.supportManyParameters())
+          .setGoogleCredentialFilePath(connectionContext.getGoogleCredentials())
+          .setGoogleServiceAccount(connectionContext.getGoogleServiceAccount())
+          .setAllowedVolumeIngestionPaths(connectionContext.getVolumeOperationAllowedPaths())
+          .setSocketTimeout(connectionContext.getSocketTimeout())
+          .setStringColumnLength(connectionContext.getDefaultStringColumnLength())
+          .setEnableComplexDatatypeSupport(connectionContext.isComplexDatatypeSupportEnabled())
+          .setEnableGeoSpatialSupport(connectionContext.isGeoSpatialSupportEnabled())
+          .setAzureWorkspaceResourceId(connectionContext.getAzureWorkspaceResourceId())
+          .setAzureTenantId(connectionContext.getAzureTenantId())
+          .setSslTrustStoreType(connectionContext.getSSLTrustStoreType())
+          .setEnableArrow(connectionContext.shouldEnableArrow())
+          .setEnableDirectResults(connectionContext.getDirectResultMode())
+          .setCheckCertificateRevocation(connectionContext.checkCertificateRevocation())
+          .setAcceptUndeterminedCertificateRevocation(
+              connectionContext.acceptUndeterminedCertificateRevocation())
+          .setDriverMode(
+              connectionContext.getClientType() != null
+                  ? connectionContext.getClientType().toString()
+                  : "UNKNOWN")
+          .setAuthEndpoint(connectionContext.getAuthEndpoint())
+          .setTokenEndpoint(connectionContext.getTokenEndpoint())
+          .setNonProxyHosts(StringUtil.split(connectionContext.getNonProxyHosts()))
+          .setHttpConnectionPoolSize(connectionContext.getHttpConnectionPoolSize())
+          .setEnableSeaHybridResults(connectionContext.isSqlExecHybridResultsEnabled())
+          .setAllowSelfSignedSupport(connectionContext.allowSelfSignedCerts())
+          .setUseSystemTrustStore(connectionContext.useSystemTrustStore())
+          .setRowsFetchedPerBlock(connectionContext.getRowsFetchedPerBlock())
+          .setAsyncPollIntervalMillis(connectionContext.getAsyncExecPollInterval())
+          .setEnableTokenCache(connectionContext.isTokenCacheEnabled())
+          .setHttpPath(connectionContext.getHttpPath())
+          .setEnableMetricViewMetadata(connectionContext.getEnableMetricViewMetadata())
+          .setQueryTags(connectionContext.getSessionConfigs().get(QUERY_TAGS));
+    } catch (DatabricksValidationException e) {
+      // If configuration validation fails, return null to skip telemetry export
+      // This prevents invalid configuration from breaking telemetry
+      return null;
+    }
     if (connectionContext.useJWTAssertion()) {
       connectionParameters
           .setEnableJwtAssertion(true)
@@ -373,5 +393,189 @@ public class TelemetryHelper {
 
     // Finally check system property
     return System.getProperty(APP_NAME_SYSTEM_PROPERTY);
+  }
+
+  public static String keyOf(IDatabricksConnectionContext context) {
+    if (context == null || context.getHost() == null) {
+      return DEFAULT_HOST;
+    }
+    return context.getHost();
+  }
+
+  /**
+   * Removes cached connection parameters for the given connection UUID. Should be called when a
+   * connection is closed to prevent memory leaks.
+   *
+   * @param connectionUuid The connection UUID whose cached parameters should be removed
+   */
+  public static void removeConnectionParameters(String connectionUuid) {
+    if (connectionUuid != null) {
+      connectionParameterCache.remove(connectionUuid);
+    }
+  }
+
+  /** Clears all cached connection parameters. This should only be used for testing purposes. */
+  @VisibleForTesting
+  static void clearConnectionParameterCache() {
+    connectionParameterCache.clear();
+  }
+
+  // Simplified telemetry recording methods that handle getting the collector internally
+
+  /**
+   * Records the total chunks for a statement. Silently ignores errors.
+   *
+   * @param connectionContext The connection context
+   * @param statementId The statement ID
+   * @param chunkCount The total number of chunks
+   */
+  public static void recordTotalChunks(
+      IDatabricksConnectionContext connectionContext, StatementId statementId, long chunkCount) {
+    try {
+      if (connectionContext != null) {
+        TelemetryCollectorManager.getInstance()
+            .getOrCreateCollector(connectionContext)
+            .recordTotalChunks(statementId, chunkCount);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error recording total chunks telemetry: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Sets the result format for a statement (SQL Execution API). Silently ignores errors.
+   *
+   * @param connectionContext The connection context
+   * @param statementId The statement ID
+   * @param format The result format
+   */
+  public static void setResultFormat(
+      IDatabricksConnectionContext connectionContext, StatementId statementId, Format format) {
+    try {
+      if (connectionContext != null) {
+        TelemetryCollectorManager.getInstance()
+            .getOrCreateCollector(connectionContext)
+            .setResultFormat(statementId, format);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error setting result format telemetry: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Sets the result format for a statement (Thrift API). Silently ignores errors.
+   *
+   * @param connectionContext The connection context
+   * @param parentStatement The parent statement
+   * @param format The result format
+   */
+  public static void setResultFormat(
+      IDatabricksConnectionContext connectionContext,
+      IDatabricksStatementInternal parentStatement,
+      TSparkRowSetType format) {
+    try {
+      if (connectionContext != null) {
+        TelemetryCollectorManager.getInstance()
+            .getOrCreateCollector(connectionContext)
+            .setResultFormat(parentStatement, format);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error setting result format telemetry: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Records a result set iteration. Silently ignores errors.
+   *
+   * @param connectionContext The connection context
+   * @param statementId The statement ID
+   * @param chunkCount The total number of chunks
+   * @param hasNext Whether there are more rows
+   */
+  public static void recordResultSetIteration(
+      IDatabricksConnectionContext connectionContext,
+      String statementId,
+      long chunkCount,
+      boolean hasNext) {
+    try {
+      if (connectionContext != null) {
+        TelemetryCollectorManager.getInstance()
+            .getOrCreateCollector(connectionContext)
+            .recordResultSetIteration(statementId, chunkCount, hasNext);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error recording result set iteration telemetry: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Records a result set iteration from a parent statement. Extracts connection context safely and
+   * silently ignores all errors.
+   *
+   * @param parentStatement The parent statement (can be null)
+   * @param statementId The statement ID
+   * @param chunkCount The total number of chunks (can be null)
+   * @param hasNext Whether there are more rows
+   */
+  public static void recordResultSetIteration(
+      IDatabricksStatementInternal parentStatement,
+      StatementId statementId,
+      Long chunkCount,
+      boolean hasNext) {
+    try {
+      if (parentStatement != null && chunkCount != null) {
+        IDatabricksConnectionContext connectionContext =
+            ((DatabricksConnection) parentStatement.getStatement().getConnection())
+                .getConnectionContext();
+        recordResultSetIteration(
+            connectionContext, statementId.toSQLExecStatementId(), chunkCount, hasNext);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error getting connection context for telemetry: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Records get operation status latency. Silently ignores errors.
+   *
+   * @param connectionContext The connection context
+   * @param statementId The statement ID
+   * @param latencyMillis The operation latency in milliseconds
+   */
+  public static void recordGetOperationStatus(
+      IDatabricksConnectionContext connectionContext, String statementId, long latencyMillis) {
+    try {
+      if (connectionContext != null) {
+        TelemetryCollectorManager.getInstance()
+            .getOrCreateCollector(connectionContext)
+            .recordGetOperationStatus(statementId, latencyMillis);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error recording get operation status telemetry: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Records chunk download latency. Silently ignores errors.
+   *
+   * @param connectionContext The connection context
+   * @param statementId The statement ID
+   * @param chunkIndex The chunk index
+   * @param latencyMillis The download latency in milliseconds
+   */
+  public static void recordChunkDownloadLatency(
+      IDatabricksConnectionContext connectionContext,
+      String statementId,
+      long chunkIndex,
+      long latencyMillis) {
+    try {
+      if (connectionContext != null) {
+        TelemetryCollectorManager.getInstance()
+            .getOrCreateCollector(connectionContext)
+            .recordChunkDownloadLatency(statementId, chunkIndex, latencyMillis);
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error recording chunk download latency telemetry: {}", e.getMessage());
+    }
   }
 }

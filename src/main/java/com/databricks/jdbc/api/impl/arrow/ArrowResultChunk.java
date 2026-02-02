@@ -4,6 +4,7 @@ import static com.databricks.jdbc.common.util.DatabricksThriftUtil.createExterna
 import static com.databricks.jdbc.common.util.ValidationUtil.checkHTTPError;
 import static com.databricks.jdbc.telemetry.TelemetryHelper.getStatementIdString;
 
+import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
 import com.databricks.jdbc.common.CompressionCodec;
 import com.databricks.jdbc.common.DatabricksJdbcUrlParams;
 import com.databricks.jdbc.common.util.DecompressionUtil;
@@ -15,19 +16,20 @@ import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.client.thrift.generated.TSparkArrowResultLink;
 import com.databricks.jdbc.model.core.ExternalLink;
-import com.databricks.jdbc.telemetry.latency.TelemetryCollector;
+import com.databricks.jdbc.telemetry.TelemetryHelper;
 import com.databricks.sdk.service.sql.BaseChunkInfo;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.Map;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URIBuilder;
 
 public class ArrowResultChunk extends AbstractArrowResultChunk {
   private static final JdbcLogger LOGGER = JdbcLoggerFactory.getLogger(ArrowResultChunk.class);
+  private final IDatabricksConnectionContext connectionContext;
 
   private ArrowResultChunk(Builder builder) throws DatabricksParsingException {
     super(
@@ -39,6 +41,7 @@ public class ArrowResultChunk extends AbstractArrowResultChunk {
         builder.chunkLink,
         builder.expiryTime,
         builder.chunkReadyTimeoutSeconds);
+    this.connectionContext = builder.connectionContext;
     if (builder.inputStream != null) {
       // Data is already available
       try {
@@ -78,25 +81,37 @@ public class ArrowResultChunk extends AbstractArrowResultChunk {
       // Retry would be done in http client, we should not bother about that here
       response = httpClient.execute(getRequest, true);
       checkHTTPError(response);
-
       long downloadTimeMs = (System.nanoTime() - startTime) / 1_000_000;
-      long contentLength = response.getEntity().getContentLength();
-      logDownloadMetrics(
-          downloadTimeMs, contentLength, chunkLink.getExternalLink(), speedThreshold);
 
-      TelemetryCollector.getInstance()
-          .recordChunkDownloadLatency(
-              getStatementIdString(statementId), chunkIndex, downloadTimeMs);
+      // Record chunk download latency telemetry
+      TelemetryHelper.recordChunkDownloadLatency(
+          connectionContext, getStatementIdString(statementId), chunkIndex, downloadTimeMs);
+
+      // Read compressed stream fully (download latency excludes decompression)
+      byte[] compressed = IOUtils.toByteArray(response.getEntity().getContent());
+
+      // Set status to DOWNLOAD_SUCCEEDED after reading the compressed stream fully
       setStatus(ChunkStatus.DOWNLOAD_SUCCEEDED);
-      String decompressionContext =
-          String.format(
-              "Data decompression for chunk index [%d] and statement [%s]",
-              this.chunkIndex, this.statementId);
-      InputStream uncompressedStream =
-          DecompressionUtil.decompress(
-              response.getEntity().getContent(), compressionCodec, decompressionContext);
-      initializeData(uncompressedStream);
-    } catch (IOException | DatabricksSQLException | URISyntaxException e) {
+
+      long size = response.getEntity().getContentLength();
+      logDownloadMetrics(
+          downloadTimeMs,
+          size > 0 ? size : compressed.length,
+          chunkLink.getExternalLink(),
+          speedThreshold);
+
+      // Decompress (if needed) and parse
+      try {
+        String ctx =
+            String.format(
+                "Data decompression for chunk index [%d] and statement [%s]",
+                this.chunkIndex, this.statementId);
+        InputStream data = DecompressionUtil.decompressToStream(compressed, compressionCodec, ctx);
+        initializeData(data);
+      } catch (Exception e) {
+        handleFailure(e, ChunkStatus.PROCESSING_FAILED);
+      }
+    } catch (Exception e) {
       handleFailure(e, ChunkStatus.DOWNLOAD_FAILED);
     } finally {
       if (response != null) {
@@ -133,8 +148,9 @@ public class ArrowResultChunk extends AbstractArrowResultChunk {
       headers.forEach(getRequest::addHeader);
     } else {
       LOGGER.debug(
-          "No encryption headers present for chunk index %s and statement %s",
-          chunkIndex, statementId);
+          "No encryption headers present for chunk index {} and statement {}",
+          chunkIndex,
+          statementId);
     }
   }
 
@@ -144,7 +160,7 @@ public class ArrowResultChunk extends AbstractArrowResultChunk {
       double speedMBps = (contentLength / 1024.0 / 1024.0) / (downloadTimeMs / 1000.0);
       String baseUrl = url.split("\\?")[0];
 
-      LOGGER.info(
+      LOGGER.debug(
           String.format(
               "CloudFetch download: %.4f MB/s, %d bytes in %dms from %s",
               speedMBps, contentLength, downloadTimeMs, baseUrl));
@@ -169,9 +185,15 @@ public class ArrowResultChunk extends AbstractArrowResultChunk {
     private InputStream inputStream;
     private int chunkReadyTimeoutSeconds =
         Integer.parseInt(DatabricksJdbcUrlParams.CHUNK_READY_TIMEOUT_SECONDS.getDefaultValue());
+    private IDatabricksConnectionContext connectionContext;
 
     public Builder withStatementId(StatementId statementId) {
       this.statementId = statementId;
+      return this;
+    }
+
+    public Builder withConnectionContext(IDatabricksConnectionContext connectionContext) {
+      this.connectionContext = connectionContext;
       return this;
     }
 
@@ -179,6 +201,23 @@ public class ArrowResultChunk extends AbstractArrowResultChunk {
       this.chunkIndex = baseChunkInfo.getChunkIndex();
       this.numRows = baseChunkInfo.getRowCount();
       this.rowOffset = baseChunkInfo.getRowOffset();
+      this.status = status == null ? ChunkStatus.PENDING : status;
+      return this;
+    }
+
+    /**
+     * Sets chunk metadata directly without requiring a BaseChunkInfo object. Useful for streaming
+     * chunk creation where metadata comes from ExternalLink.
+     *
+     * @param chunkIndex The index of this chunk
+     * @param rowCount The number of rows in this chunk
+     * @param rowOffset The starting row offset for this chunk
+     * @return this builder
+     */
+    public Builder withChunkMetadata(long chunkIndex, long rowCount, long rowOffset) {
+      this.chunkIndex = chunkIndex;
+      this.numRows = rowCount;
+      this.rowOffset = rowOffset;
       this.status = status == null ? ChunkStatus.PENDING : status;
       return this;
     }
