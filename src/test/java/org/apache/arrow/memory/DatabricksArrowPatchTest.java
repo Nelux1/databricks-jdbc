@@ -67,6 +67,8 @@ public class DatabricksArrowPatchTest {
     Throwable throwable = null;
     try {
       RootAllocator allocator = new RootAllocator();
+      ArrowBuf buffer = allocator.buffer(64);
+      buffer.writeByte(0);
       allocator.close(); // Unreachable code.
     } catch (Throwable t) {
       throwable = t;
