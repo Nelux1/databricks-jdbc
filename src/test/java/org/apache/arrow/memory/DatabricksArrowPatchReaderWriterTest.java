@@ -120,8 +120,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testFloats = new TestIntegers();
-    byte[] date = writeData(testFloats, totalRows, writeAllocator);
-    readAndValidate(testFloats, date, readAllocator);
+    byte[] data = writeData(testFloats, totalRows, writeAllocator);
+    readAndValidate(testFloats, data, readAllocator);
   }
 
   /** Test read and write of float types. */
@@ -131,8 +131,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testFloats = new TestFloats();
-    byte[] date = writeData(testFloats, totalRows, writeAllocator);
-    readAndValidate(testFloats, date, readAllocator);
+    byte[] data = writeData(testFloats, totalRows, writeAllocator);
+    readAndValidate(testFloats, data, readAllocator);
   }
 
   /** Test read and write of decimal types . */
@@ -142,8 +142,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testFloats = new TestDecimal();
-    byte[] date = writeData(testFloats, totalRows, writeAllocator);
-    readAndValidate(testFloats, date, readAllocator);
+    byte[] data = writeData(testFloats, totalRows, writeAllocator);
+    readAndValidate(testFloats, data, readAllocator);
   }
 
   /** Test read and write of decimal256 types. */
@@ -153,8 +153,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testDecimal256 = new TestDecimal256();
-    byte[] date = writeData(testDecimal256, totalRows, writeAllocator);
-    readAndValidate(testDecimal256, date, readAllocator);
+    byte[] data = writeData(testDecimal256, totalRows, writeAllocator);
+    readAndValidate(testDecimal256, data, readAllocator);
   }
 
   /** Test read and write of temporal types. */
@@ -164,8 +164,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testTemporal = new TestTemporalTypes();
-    byte[] date = writeData(testTemporal, totalRows, writeAllocator);
-    readAndValidate(testTemporal, date, readAllocator);
+    byte[] data = writeData(testTemporal, totalRows, writeAllocator);
+    readAndValidate(testTemporal, data, readAllocator);
   }
 
   /** Test read and write of binary types. */
@@ -175,8 +175,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testBinary = new TestBinaryTypes();
-    byte[] date = writeData(testBinary, totalRows, writeAllocator);
-    readAndValidate(testBinary, date, readAllocator);
+    byte[] data = writeData(testBinary, totalRows, writeAllocator);
+    readAndValidate(testBinary, data, readAllocator);
   }
 
   /** Test read and write of UTF-8 string types. */
@@ -186,8 +186,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testUtf8 = new TestUtf8Types();
-    byte[] date = writeData(testUtf8, totalRows, writeAllocator);
-    readAndValidate(testUtf8, date, readAllocator);
+    byte[] data = writeData(testUtf8, totalRows, writeAllocator);
+    readAndValidate(testUtf8, data, readAllocator);
   }
 
   /** Test read and write of list types. */
@@ -197,8 +197,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testList = new TestListTypes();
-    byte[] date = writeData(testList, totalRows, writeAllocator);
-    readAndValidate(testList, date, readAllocator);
+    byte[] data = writeData(testList, totalRows, writeAllocator);
+    readAndValidate(testList, data, readAllocator);
   }
 
   /** Test read and write of struct types. */
@@ -208,8 +208,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testStruct = new TestStructTypes();
-    byte[] date = writeData(testStruct, totalRows, writeAllocator);
-    readAndValidate(testStruct, date, readAllocator);
+    byte[] data = writeData(testStruct, totalRows, writeAllocator);
+    readAndValidate(testStruct, data, readAllocator);
   }
 
   /** Test read and write of map types. */
@@ -219,8 +219,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testMap = new TestMapTypes();
-    byte[] date = writeData(testMap, totalRows, writeAllocator);
-    readAndValidate(testMap, date, readAllocator);
+    byte[] data = writeData(testMap, totalRows, writeAllocator);
+    readAndValidate(testMap, data, readAllocator);
   }
 
   /** Test read and write of union types. */
@@ -230,8 +230,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testUnion = new TestUnionTypes();
-    byte[] date = writeData(testUnion, totalRows, writeAllocator);
-    readAndValidate(testUnion, date, readAllocator);
+    byte[] data = writeData(testUnion, totalRows, writeAllocator);
+    readAndValidate(testUnion, data, readAllocator);
   }
 
   /** Test read and write of dictionary types. */
@@ -241,8 +241,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testDictionary = new TestDictionaryTypes();
-    byte[] date = writeData(testDictionary, totalRows, writeAllocator);
-    readAndValidate(testDictionary, date, readAllocator);
+    byte[] data = writeData(testDictionary, totalRows, writeAllocator);
+    readAndValidate(testDictionary, data, readAllocator);
   }
 
   /** Test read and write of run-end encoded types. */
@@ -252,8 +252,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testRunEndEncoded = new TestRunEndEncodedTypes();
-    byte[] date = writeData(testRunEndEncoded, totalRows, writeAllocator);
-    readAndValidate(testRunEndEncoded, date, readAllocator);
+    byte[] data = writeData(testRunEndEncoded, totalRows, writeAllocator);
+    readAndValidate(testRunEndEncoded, data, readAllocator);
   }
 
   /** Test read and write of null types. */
@@ -263,8 +263,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testNull = new TestNullTypes();
-    byte[] date = writeData(testNull, totalRows, writeAllocator);
-    readAndValidate(testNull, date, readAllocator);
+    byte[] data = writeData(testNull, totalRows, writeAllocator);
+    readAndValidate(testNull, data, readAllocator);
   }
 
   /** Test read and write of boolean types. */
@@ -274,8 +274,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testBool = new TestBoolTypes();
-    byte[] date = writeData(testBool, totalRows, writeAllocator);
-    readAndValidate(testBool, date, readAllocator);
+    byte[] data = writeData(testBool, totalRows, writeAllocator);
+    readAndValidate(testBool, data, readAllocator);
   }
 
   /** Test read and write of fixed-size list types. */
@@ -285,8 +285,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testFixedSizeList = new TestFixedSizeListTypes();
-    byte[] date = writeData(testFixedSizeList, totalRows, writeAllocator);
-    readAndValidate(testFixedSizeList, date, readAllocator);
+    byte[] data = writeData(testFixedSizeList, totalRows, writeAllocator);
+    readAndValidate(testFixedSizeList, data, readAllocator);
   }
 
   /** Test read and write of UTF8 view types. */
@@ -296,8 +296,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testUtf8View = new TestUtf8ViewTypes();
-    byte[] date = writeData(testUtf8View, totalRows, writeAllocator);
-    readAndValidate(testUtf8View, date, readAllocator);
+    byte[] data = writeData(testUtf8View, totalRows, writeAllocator);
+    readAndValidate(testUtf8View, data, readAllocator);
   }
 
   /** Test read and write of binary view types. */
@@ -307,8 +307,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testBinaryView = new TestBinaryViewTypes();
-    byte[] date = writeData(testBinaryView, totalRows, writeAllocator);
-    readAndValidate(testBinaryView, date, readAllocator);
+    byte[] data = writeData(testBinaryView, totalRows, writeAllocator);
+    readAndValidate(testBinaryView, data, readAllocator);
   }
 
   /** Test read and write of list view types. */
@@ -318,8 +318,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testListView = new TestListViewTypes();
-    byte[] date = writeData(testListView, totalRows, writeAllocator);
-    readAndValidate(testListView, date, readAllocator);
+    byte[] data = writeData(testListView, totalRows, writeAllocator);
+    readAndValidate(testListView, data, readAllocator);
   }
 
   /** Test read and write of large list view types. */
@@ -329,8 +329,8 @@ public class DatabricksArrowPatchReaderWriterTest {
       BufferAllocator readAllocator, BufferAllocator writeAllocator, int totalRows)
       throws Exception {
     DataTester testLargeListView = new TestLargeListViewTypes();
-    byte[] date = writeData(testLargeListView, totalRows, writeAllocator);
-    readAndValidate(testLargeListView, date, readAllocator);
+    byte[] data = writeData(testLargeListView, totalRows, writeAllocator);
+    readAndValidate(testLargeListView, data, readAllocator);
   }
 
   private byte[] writeData(DataTester dataTester, int totalRowCount, BufferAllocator allocator)
