@@ -195,7 +195,8 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   @Override
   public String toString() {
-    return String.format("DatabricksArrowBuf id:%d capacity:%d, offset:%d", getId(), capacity, offset);
+    return String.format(
+        "DatabricksArrowBuf id:%d capacity:%d, offset:%d", getId(), capacity, offset);
   }
 
   @Override
