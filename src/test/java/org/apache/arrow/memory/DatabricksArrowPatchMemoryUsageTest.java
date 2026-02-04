@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  */
 public class DatabricksArrowPatchMemoryUsageTest {
   /** Path to an arrow chunk. */
-  private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_1.arrow");
+  private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_all_types.arrow");
 
   private static final Logger logger =
       LoggerFactory.getLogger(DatabricksArrowPatchMemoryUsageTest.class);
