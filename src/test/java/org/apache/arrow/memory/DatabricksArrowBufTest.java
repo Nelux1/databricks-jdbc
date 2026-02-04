@@ -23,7 +23,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Test all the public API of {@code DatabricksArrowBuf}. */
-@SuppressWarnings("resource")
 @Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
 @EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
 public class DatabricksArrowBufTest {
@@ -33,6 +32,7 @@ public class DatabricksArrowBufTest {
   private static final Logger logger = LoggerFactory.getLogger(DatabricksArrowBufTest.class);
 
   /** Test the constructor fails on invalid capacity arguments. */
+  @SuppressWarnings("resource")
   @Test
   public void testConstructorFailsOnInvalidCapacity() {
     final int bufferSize = 32;
@@ -66,38 +66,40 @@ public class DatabricksArrowBufTest {
   @Test
   public void testCheckBytes() {
     final int bufferSize = 32;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-    for (int i = 0; i < bufferSize; i++) {
-      buffer.checkBytes(0, bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < bufferSize; i++) {
+        buffer.checkBytes(0, bufferSize);
+      }
+
+      // Negative should throw an exception.
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> buffer.checkBytes(-1, bufferSize),
+          "Negative start index should fail.");
+
+      // Past end should throw an exception.
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> buffer.checkBytes(0, bufferSize + 1),
+          "Out of bounds end index should fail.");
     }
-
-    // Negative should throw an exception.
-    assertThrows(
-        IndexOutOfBoundsException.class,
-        () -> buffer.checkBytes(-1, bufferSize),
-        "Negative start index should fail.");
-
-    // Past end should throw an exception.
-    assertThrows(
-        IndexOutOfBoundsException.class,
-        () -> buffer.checkBytes(0, bufferSize + 1),
-        "Out of bounds end index should fail.");
   }
 
   /** Test setting buffer capacity. */
   @Test
   public void testSetCapacity() {
     final int bufferSize = 32;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
 
-    assertThrows(
-        UnsupportedOperationException.class,
-        () -> buffer.capacity(bufferSize + 1),
-        "Increasing buffer capacity should fail.");
+      assertThrows(
+          UnsupportedOperationException.class,
+          () -> buffer.capacity(bufferSize + 1),
+          "Increasing buffer capacity should fail.");
 
-    // Reducing buffer size capacity should be supported.
-    for (int capacity = bufferSize - 1; capacity >= 0; capacity--) {
-      buffer.capacity(capacity);
+      // Reducing buffer size capacity should be supported.
+      for (int capacity = bufferSize - 1; capacity >= 0; capacity--) {
+        buffer.capacity(capacity);
+      }
     }
   }
 
@@ -105,25 +107,26 @@ public class DatabricksArrowBufTest {
   @Test
   public void testByteOrder() {
     final int bufferSize = 32;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-
-    assertEquals(BYTE_ORDER, buffer.order(), "ByteOrder should be " + BYTE_ORDER);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      assertEquals(BYTE_ORDER, buffer.order(), "ByteOrder should be " + BYTE_ORDER);
+    }
   }
 
   /** Test readable bytes behaviour is correct. */
   @Test
   public void testReadableBytes() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < bufferSize; i++) {
+        buffer.writeByte((byte) i);
+        assertEquals(i + 1, buffer.readableBytes(), "Readable bytes should be correct.");
+      }
 
-    for (int i = 0; i < bufferSize; i++) {
-      buffer.writeByte((byte) i);
-      assertEquals(i + 1, buffer.readableBytes(), "Readable bytes should be correct.");
-    }
-
-    for (int i = 0; i < bufferSize; i++) {
-      buffer.readByte();
-      assertEquals(bufferSize - 1 - i, buffer.readableBytes(), "Readable bytes should be correct.");
+      for (int i = 0; i < bufferSize; i++) {
+        buffer.readByte();
+        assertEquals(
+            bufferSize - 1 - i, buffer.readableBytes(), "Readable bytes should be correct.");
+      }
     }
   }
 
@@ -131,12 +134,13 @@ public class DatabricksArrowBufTest {
   @Test
   public void testWritableBytes() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-
-    assertEquals(bufferSize, buffer.writableBytes(), "Writable bytes should be correct.");
-    for (int i = 0; i < bufferSize; i++) {
-      buffer.writeByte((byte) i);
-      assertEquals(bufferSize - 1 - i, buffer.writableBytes(), "Writable bytes should be correct.");
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      assertEquals(bufferSize, buffer.writableBytes(), "Writable bytes should be correct.");
+      for (int i = 0; i < bufferSize; i++) {
+        buffer.writeByte((byte) i);
+        assertEquals(
+            bufferSize - 1 - i, buffer.writableBytes(), "Writable bytes should be correct.");
+      }
     }
   }
 
@@ -212,38 +216,39 @@ public class DatabricksArrowBufTest {
   @Test
   public void testSliceFailsOnIncorrectIndices() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      // Write zeroes into the original buffer.
+      for (int i = 0; i < bufferSize; i++) {
+        buffer.writeByte((byte) 0);
+      }
 
-    // Write zeroes into the original buffer.
-    for (int i = 0; i < bufferSize; i++) {
-      buffer.writeByte((byte) 0);
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> buffer.slice(-1, bufferSize),
+          "Should fail on negative index.");
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> buffer.slice(0, bufferSize + 1),
+          "Should fail on out of bounds length.");
+      assertThrows(
+          IndexOutOfBoundsException.class,
+          () -> buffer.slice(1, bufferSize),
+          "Should fail on out of bounds length");
     }
-
-    assertThrows(
-        IndexOutOfBoundsException.class,
-        () -> buffer.slice(-1, bufferSize),
-        "Should fail on negative index.");
-    assertThrows(
-        IndexOutOfBoundsException.class,
-        () -> buffer.slice(0, bufferSize + 1),
-        "Should fail on out of bounds length.");
-    assertThrows(
-        IndexOutOfBoundsException.class,
-        () -> buffer.slice(1, bufferSize),
-        "Should fail on out of bounds length");
   }
 
   /** Test nio buffer behaviour. */
   @Test
   public void testNioBuffer() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    ByteBuffer nioBuffer;
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < bufferSize; i++) {
+        buffer.writeByte(getByteValue(i));
+      }
 
-    for (int i = 0; i < bufferSize; i++) {
-      buffer.writeByte(getByteValue(i));
+      nioBuffer = buffer.nioBuffer();
     }
-
-    ByteBuffer nioBuffer = buffer.nioBuffer();
     assertEquals(
         bufferSize,
         nioBuffer.remaining(),
@@ -302,16 +307,19 @@ public class DatabricksArrowBufTest {
   @Test
   public void testMemoryAddress() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-    assertEquals(0, buffer.memoryAddress(), "Memory address should be correct.");
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      assertEquals(0, buffer.memoryAddress(), "Memory address should be correct.");
+    }
   }
 
   /** Test toString works. */
   @Test
   public void testToString() {
     final int bufferSize = 1024;
-    DatabricksBufferAllocator allocator = new DatabricksBufferAllocator();
-    DatabricksArrowBuf buffer = (DatabricksArrowBuf) allocator.buffer(bufferSize);
+    DatabricksArrowBuf buffer;
+    try (DatabricksBufferAllocator allocator = new DatabricksBufferAllocator()) {
+      buffer = (DatabricksArrowBuf) allocator.buffer(bufferSize);
+    }
     //noinspection Convert2MethodRef
     assertDoesNotThrow(() -> buffer.toString());
   }
@@ -332,12 +340,13 @@ public class DatabricksArrowBufTest {
   @Test
   public void testHashCode() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-    assertEquals(buffer.hashCode(), buffer.hashCode(), "Same object should have same hashcode.");
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      assertEquals(buffer.hashCode(), buffer.hashCode(), "Same object should have same hashcode.");
 
-    DatabricksArrowBuf slice = (DatabricksArrowBuf) buffer.slice(0, bufferSize);
-    assertNotEquals(
-        buffer.hashCode(), slice.hashCode(), "Different object should have different hashcode. ");
+      DatabricksArrowBuf slice = (DatabricksArrowBuf) buffer.slice(0, bufferSize);
+      assertNotEquals(
+          buffer.hashCode(), slice.hashCode(), "Different object should have different hashcode. ");
+    }
   }
 
   /** Test get and set on long. */
@@ -345,19 +354,19 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetLong() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Long.BYTES; i++) {
+        @SuppressWarnings("UnnecessaryLocalVariable")
+        long value = i;
+        byteBuffer.putLong(i, value);
+        assertEquals(value, buffer.getLong(i), "Long values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Long.BYTES; i++) {
-      @SuppressWarnings("UnnecessaryLocalVariable")
-      long value = i;
-      byteBuffer.putLong(i, value);
-      assertEquals(value, buffer.getLong(i), "Long values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Long.BYTES; i++) {
-      long value = i + bufferSize;
-      buffer.setLong(i, value);
-      assertEquals(value, byteBuffer.getLong(i), "Long values should be same.");
+      for (int i = 0; i < bufferSize - Long.BYTES; i++) {
+        long value = i + bufferSize;
+        buffer.setLong(i, value);
+        assertEquals(value, byteBuffer.getLong(i), "Long values should be same.");
+      }
     }
   }
 
@@ -366,18 +375,18 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetFloat() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Float.BYTES; i++) {
+        float value = (float) (i * Math.PI);
+        byteBuffer.putFloat(i, value);
+        assertEquals(value, buffer.getFloat(i), "Float values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Float.BYTES; i++) {
-      float value = (float) (i * Math.PI);
-      byteBuffer.putFloat(i, value);
-      assertEquals(value, buffer.getFloat(i), "Float values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Float.BYTES; i++) {
-      float value = (float) ((i + bufferSize) * Math.PI);
-      buffer.setFloat(i, value);
-      assertEquals(value, byteBuffer.getFloat(i), "Float values should be same.");
+      for (int i = 0; i < bufferSize - Float.BYTES; i++) {
+        float value = (float) ((i + bufferSize) * Math.PI);
+        buffer.setFloat(i, value);
+        assertEquals(value, byteBuffer.getFloat(i), "Float values should be same.");
+      }
     }
   }
 
@@ -386,18 +395,18 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetDouble() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Double.BYTES; i++) {
+        double value = i * Math.PI;
+        byteBuffer.putDouble(i, value);
+        assertEquals(value, buffer.getDouble(i), "Double values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Double.BYTES; i++) {
-      double value = i * Math.PI;
-      byteBuffer.putDouble(i, value);
-      assertEquals(value, buffer.getDouble(i), "Double values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Double.BYTES; i++) {
-      double value = (i + bufferSize) * Math.PI;
-      buffer.setDouble(i, value);
-      assertEquals(value, byteBuffer.getDouble(i), "Double values should be same.");
+      for (int i = 0; i < bufferSize - Double.BYTES; i++) {
+        double value = (i + bufferSize) * Math.PI;
+        buffer.setDouble(i, value);
+        assertEquals(value, byteBuffer.getDouble(i), "Double values should be same.");
+      }
     }
   }
 
@@ -406,18 +415,18 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetChar() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Character.BYTES; i++) {
+        char value = (char) getByteValue(i);
+        byteBuffer.putChar(i, value);
+        assertEquals(value, buffer.getChar(i), "Character values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Character.BYTES; i++) {
-      char value = (char) getByteValue(i);
-      byteBuffer.putChar(i, value);
-      assertEquals(value, buffer.getChar(i), "Character values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Character.BYTES; i++) {
-      char value = (char) getByteValue(i + bufferSize);
-      buffer.setChar(i, value);
-      assertEquals(value, byteBuffer.getChar(i), "Character values should be same.");
+      for (int i = 0; i < bufferSize - Character.BYTES; i++) {
+        char value = (char) getByteValue(i + bufferSize);
+        buffer.setChar(i, value);
+        assertEquals(value, byteBuffer.getChar(i), "Character values should be same.");
+      }
     }
   }
 
@@ -426,19 +435,19 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetInt() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Integer.BYTES; i++) {
+        @SuppressWarnings("UnnecessaryLocalVariable")
+        int value = i;
+        byteBuffer.putInt(i, value);
+        assertEquals(value, buffer.getInt(i), "Integer values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Integer.BYTES; i++) {
-      @SuppressWarnings("UnnecessaryLocalVariable")
-      int value = i;
-      byteBuffer.putInt(i, value);
-      assertEquals(value, buffer.getInt(i), "Integer values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Integer.BYTES; i++) {
-      int value = i + bufferSize;
-      buffer.setInt(i, value);
-      assertEquals(value, byteBuffer.getInt(i), "Integer values should be same.");
+      for (int i = 0; i < bufferSize - Integer.BYTES; i++) {
+        int value = i + bufferSize;
+        buffer.setInt(i, value);
+        assertEquals(value, byteBuffer.getInt(i), "Integer values should be same.");
+      }
     }
   }
 
@@ -447,18 +456,18 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetShort() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Short.BYTES; i++) {
+        short value = (short) i;
+        byteBuffer.putShort(i, value);
+        assertEquals(value, buffer.getShort(i), "Short values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Short.BYTES; i++) {
-      short value = (short) i;
-      byteBuffer.putShort(i, value);
-      assertEquals(value, buffer.getShort(i), "Short values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Short.BYTES; i++) {
-      short value = (short) (i + bufferSize);
-      buffer.setShort(i, value);
-      assertEquals(value, byteBuffer.getShort(i), "Short values should be same.");
+      for (int i = 0; i < bufferSize - Short.BYTES; i++) {
+        short value = (short) (i + bufferSize);
+        buffer.setShort(i, value);
+        assertEquals(value, byteBuffer.getShort(i), "Short values should be same.");
+      }
     }
   }
 
@@ -467,18 +476,18 @@ public class DatabricksArrowBufTest {
   public void testGetAndSetByte() {
     final int bufferSize = 1024;
     ByteBuffer byteBuffer = newByteBuffer(bufferSize);
-    DatabricksArrowBuf buffer = newBuffer(byteBuffer);
+    try (DatabricksArrowBuf buffer = newBuffer(byteBuffer)) {
+      for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
+        byte value = getByteValue(i);
+        byteBuffer.put(i, value);
+        assertEquals(value, buffer.getByte(i), "Byte values should be same.");
+      }
 
-    for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
-      byte value = getByteValue(i);
-      byteBuffer.put(i, value);
-      assertEquals(value, buffer.getByte(i), "Byte values should be same.");
-    }
-
-    for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
-      byte value = getByteValue(i + bufferSize);
-      buffer.setByte(i, value);
-      assertEquals(value, byteBuffer.get(i), "Byte values should be same.");
+      for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
+        byte value = getByteValue(i + bufferSize);
+        buffer.setByte(i, value);
+        assertEquals(value, byteBuffer.get(i), "Byte values should be same.");
+      }
     }
   }
 
@@ -486,22 +495,22 @@ public class DatabricksArrowBufTest {
   @Test
   public void testReadByteAndWriteByte() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-
-    // Write bytes.
-    for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
-      byte value = getByteValue(i);
-      if (i % 2 == 0) {
-        buffer.writeByte(value);
-      } else {
-        buffer.writeByte(i);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      // Write bytes.
+      for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
+        byte value = getByteValue(i);
+        if (i % 2 == 0) {
+          buffer.writeByte(value);
+        } else {
+          buffer.writeByte(i);
+        }
       }
-    }
 
-    // Read back the same bytes.
-    for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
-      byte value = getByteValue(i);
-      assertEquals(value, buffer.readByte(), "Byte values should be same.");
+      // Read back the same bytes.
+      for (int i = 0; i < bufferSize - Byte.BYTES; i++) {
+        byte value = getByteValue(i);
+        assertEquals(value, buffer.readByte(), "Byte values should be same.");
+      }
     }
   }
 
@@ -509,27 +518,27 @@ public class DatabricksArrowBufTest {
   @Test
   public void testWriteBytesAndReadBytes() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing bytes of length {}", size);
+        // Fill the write buffer.
+        byte[] writeBytes = new byte[size];
+        for (int i = 0; i < size; i++) {
+          writeBytes[i] = getByteValue(i);
+        }
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing bytes of length {}", size);
-      // Fill the write buffer.
-      byte[] writeBytes = new byte[size];
-      for (int i = 0; i < size; i++) {
-        writeBytes[i] = getByteValue(i);
-      }
+        // Write data.
+        buffer.clear();
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          buffer.writeBytes(writeBytes);
+        }
 
-      // Write data.
-      buffer.clear();
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        buffer.writeBytes(writeBytes);
-      }
-
-      // Read the same data and validate.
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        byte[] readBytes = new byte[writeBytes.length];
-        buffer.readBytes(readBytes);
-        assertArrayEquals(writeBytes, readBytes, "Byte values should be same.");
+        // Read the same data and validate.
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          byte[] readBytes = new byte[writeBytes.length];
+          buffer.readBytes(readBytes);
+          assertArrayEquals(writeBytes, readBytes, "Byte values should be same.");
+        }
       }
     }
   }
@@ -538,90 +547,94 @@ public class DatabricksArrowBufTest {
   @Test
   public void testWriteOfNumbers() {
     final int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-
-    // Write random numbers.
-    Random random = new Random();
-    List<Object> values = new ArrayList<>();
-    for (int i = 0; i < bufferSize; /* incremented in loop */ ) {
-      int bytesAvailable = bufferSize - i;
-      if (bytesAvailable >= Double.BYTES) {
-        int rand = random.nextInt(5);
-        switch (rand) {
-          case 0:
-            short shortValue = (short) random.nextInt(Short.MAX_VALUE);
-            buffer.writeShort(shortValue);
-            values.add(shortValue);
-            i += Short.BYTES;
-            break;
-          case 1:
-            int intValue = random.nextInt();
-            buffer.writeInt(intValue);
-            values.add(intValue);
-            i += Integer.BYTES;
-            break;
-          case 2:
-            long longValue = random.nextLong();
-            buffer.writeLong(longValue);
-            values.add(longValue);
-            i += Long.BYTES;
-            break;
-          case 3:
-            float floatValue = random.nextFloat();
-            buffer.writeFloat(floatValue);
-            values.add(floatValue);
-            i += Float.BYTES;
-            break;
-          case 4:
-            double doubleValue = random.nextDouble();
-            buffer.writeDouble(doubleValue);
-            values.add(doubleValue);
-            i += Double.BYTES;
-            break;
-          default:
-            throw new IllegalArgumentException("Invalid random number " + rand);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      // Write random numbers.
+      Random random = new Random();
+      List<Object> values = new ArrayList<>();
+      for (int i = 0; i < bufferSize; /* incremented in loop */ ) {
+        int bytesAvailable = bufferSize - i;
+        if (bytesAvailable >= Double.BYTES) {
+          int rand = random.nextInt(5);
+          switch (rand) {
+            case 0:
+              short shortValue = (short) random.nextInt(Short.MAX_VALUE);
+              buffer.writeShort(shortValue);
+              values.add(shortValue);
+              i += Short.BYTES;
+              break;
+            case 1:
+              int intValue = random.nextInt();
+              buffer.writeInt(intValue);
+              values.add(intValue);
+              i += Integer.BYTES;
+              break;
+            case 2:
+              long longValue = random.nextLong();
+              buffer.writeLong(longValue);
+              values.add(longValue);
+              i += Long.BYTES;
+              break;
+            case 3:
+              float floatValue = random.nextFloat();
+              buffer.writeFloat(floatValue);
+              values.add(floatValue);
+              i += Float.BYTES;
+              break;
+            case 4:
+              double doubleValue = random.nextDouble();
+              buffer.writeDouble(doubleValue);
+              values.add(doubleValue);
+              i += Double.BYTES;
+              break;
+            default:
+              throw new IllegalArgumentException("Invalid random number " + rand);
+          }
+        } else {
+          for (int j = 0; j < bytesAvailable; j++) {
+            byte value = getByteValue(j);
+            buffer.writeByte(value);
+            values.add(value);
+          }
+          i += bytesAvailable;
         }
-      } else {
-        for (int j = 0; j < bytesAvailable; j++) {
-          byte value = getByteValue(j);
-          buffer.writeByte(value);
-          values.add(value);
-        }
-        i += bytesAvailable;
       }
-    }
 
-    // Read and validate the numbers.
-    int index = 0;
-    for (Object value : values) {
-      if (value instanceof Byte) {
-        assertEquals(
-            (Byte) value, buffer.getByte(index), "Byte values should be same at index " + index);
-        index += Byte.BYTES;
-      } else if (value instanceof Short) {
-        assertEquals(
-            (short) value, buffer.getShort(index), "Short values should be same at index " + index);
-        index += Short.BYTES;
-      } else if (value instanceof Integer) {
-        assertEquals(
-            (int) value, buffer.getInt(index), "Integer values should be same at index " + index);
-        index += Integer.BYTES;
-      } else if (value instanceof Long) {
-        assertEquals(
-            (long) value, buffer.getLong(index), "Long values should be same at index " + index);
-        index += Long.BYTES;
-      } else if (value instanceof Float) {
-        assertEquals(
-            (float) value, buffer.getFloat(index), "Float values should be same at index " + index);
-        index += Float.BYTES;
-      } else if (value instanceof Double) {
-        assertEquals(
-            (double) value,
-            buffer.getDouble(index),
-            "Double values should be same at index " + index);
-        index += Double.BYTES;
-      } else {
-        throw new IllegalArgumentException("Invalid value " + value + " at index " + index);
+      // Read and validate the numbers.
+      int index = 0;
+      for (Object value : values) {
+        if (value instanceof Byte) {
+          assertEquals(
+              (Byte) value, buffer.getByte(index), "Byte values should be same at index " + index);
+          index += Byte.BYTES;
+        } else if (value instanceof Short) {
+          assertEquals(
+              (short) value,
+              buffer.getShort(index),
+              "Short values should be same at index " + index);
+          index += Short.BYTES;
+        } else if (value instanceof Integer) {
+          assertEquals(
+              (int) value, buffer.getInt(index), "Integer values should be same at index " + index);
+          index += Integer.BYTES;
+        } else if (value instanceof Long) {
+          assertEquals(
+              (long) value, buffer.getLong(index), "Long values should be same at index " + index);
+          index += Long.BYTES;
+        } else if (value instanceof Float) {
+          assertEquals(
+              (float) value,
+              buffer.getFloat(index),
+              "Float values should be same at index " + index);
+          index += Float.BYTES;
+        } else if (value instanceof Double) {
+          assertEquals(
+              (double) value,
+              buffer.getDouble(index),
+              "Double values should be same at index " + index);
+          index += Double.BYTES;
+        } else {
+          throw new IllegalArgumentException("Invalid value " + value + " at index " + index);
+        }
       }
     }
   }
@@ -630,27 +643,27 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnNativeByteArrays() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing bytes of length {}", size);
+        // Fill the write buffer.
+        byte[] writeBytes = new byte[size];
+        for (int i = 0; i < size; i++) {
+          writeBytes[i] = getByteValue(i);
+        }
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing bytes of length {}", size);
-      // Fill the write buffer.
-      byte[] writeBytes = new byte[size];
-      for (int i = 0; i < size; i++) {
-        writeBytes[i] = getByteValue(i);
-      }
+        // Write data.
+        buffer.clear();
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          buffer.setBytes(i, writeBytes);
+        }
 
-      // Write data.
-      buffer.clear();
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        buffer.setBytes(i, writeBytes);
-      }
-
-      // Read the same data and validate.
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        byte[] readBytes = new byte[writeBytes.length];
-        buffer.getBytes(i, readBytes);
-        assertArrayEquals(writeBytes, readBytes, "Byte values should be same.");
+        // Read the same data and validate.
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          byte[] readBytes = new byte[writeBytes.length];
+          buffer.getBytes(i, readBytes);
+          assertArrayEquals(writeBytes, readBytes, "Byte values should be same.");
+        }
       }
     }
   }
@@ -659,43 +672,43 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnNativeByteArraysWithIndex() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing bytes of length {}", size);
-      // Fill the write buffer.
-      byte[] writeBytes = new byte[size];
-      for (int i = 0; i < size; i++) {
-        writeBytes[i] = getByteValue(i);
-      }
-
-      // Write data.
-      buffer.clear();
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        // Write total=size data in stages of length 1, 2, 3, ...
-        int windex = 0;
-        int wlen = 1;
-        while (windex < writeBytes.length) {
-          int len = Math.min(writeBytes.length - windex, wlen - windex);
-          buffer.setBytes(i + windex, writeBytes, windex, len);
-          windex += len;
-          wlen++;
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing bytes of length {}", size);
+        // Fill the write buffer.
+        byte[] writeBytes = new byte[size];
+        for (int i = 0; i < size; i++) {
+          writeBytes[i] = getByteValue(i);
         }
-      }
 
-      // Read the same data and validate.
-      byte[] readBytes = new byte[writeBytes.length];
-      for (int i = 0; i + readBytes.length < bufferSize; i += readBytes.length) {
-        // Read total=size data in stages of length 1, 2, 3, ...
-        int rindex = 0;
-        int rlen = 1;
-        while (rindex < readBytes.length) {
-          int len = Math.min(readBytes.length - rindex, rlen - rindex);
-          buffer.getBytes(i + rindex, readBytes, rindex, len);
-          rindex += len;
-          rlen++;
+        // Write data.
+        buffer.clear();
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          // Write total=size data in stages of length 1, 2, 3, ...
+          int windex = 0;
+          int wlen = 1;
+          while (windex < writeBytes.length) {
+            int len = Math.min(writeBytes.length - windex, wlen - windex);
+            buffer.setBytes(i + windex, writeBytes, windex, len);
+            windex += len;
+            wlen++;
+          }
         }
-        assertArrayEquals(writeBytes, readBytes, "Byte values should be same.");
+
+        // Read the same data and validate.
+        byte[] readBytes = new byte[writeBytes.length];
+        for (int i = 0; i + readBytes.length < bufferSize; i += readBytes.length) {
+          // Read total=size data in stages of length 1, 2, 3, ...
+          int rindex = 0;
+          int rlen = 1;
+          while (rindex < readBytes.length) {
+            int len = Math.min(readBytes.length - rindex, rlen - rindex);
+            buffer.getBytes(i + rindex, readBytes, rindex, len);
+            rindex += len;
+            rlen++;
+          }
+          assertArrayEquals(writeBytes, readBytes, "Byte values should be same.");
+        }
       }
     }
   }
@@ -704,35 +717,35 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnByteBuffers() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing byte buffer of length {}", size);
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing byte buffer of length {}", size);
+        // Fill the write buffer.
+        ByteBuffer writeByteBuffer = newByteBuffer(size);
+        for (int i = 0; i < size; i++) {
+          writeByteBuffer.put(getByteValue(i));
+        }
 
-      // Fill the write buffer.
-      ByteBuffer writeByteBuffer = newByteBuffer(size);
-      for (int i = 0; i < size; i++) {
-        writeByteBuffer.put(getByteValue(i));
-      }
+        // Write data.
+        buffer.clear();
+        writeByteBuffer.flip();
+        for (int i = 0;
+            i + writeByteBuffer.capacity() < bufferSize;
+            i += writeByteBuffer.capacity()) {
+          writeByteBuffer.rewind();
+          buffer.setBytes(i, writeByteBuffer);
+        }
 
-      // Write data.
-      buffer.clear();
-      writeByteBuffer.flip();
-      for (int i = 0;
-          i + writeByteBuffer.capacity() < bufferSize;
-          i += writeByteBuffer.capacity()) {
-        writeByteBuffer.rewind();
-        buffer.setBytes(i, writeByteBuffer);
-      }
-
-      // Read the same data and validate.
-      for (int i = 0;
-          i + writeByteBuffer.capacity() < bufferSize;
-          i += writeByteBuffer.capacity()) {
-        ByteBuffer readByteBuffer = newByteBuffer(writeByteBuffer.capacity());
-        buffer.getBytes(i, readByteBuffer);
-        assertArrayEquals(
-            writeByteBuffer.array(), readByteBuffer.array(), "Byte values should be same.");
+        // Read the same data and validate.
+        for (int i = 0;
+            i + writeByteBuffer.capacity() < bufferSize;
+            i += writeByteBuffer.capacity()) {
+          ByteBuffer readByteBuffer = newByteBuffer(writeByteBuffer.capacity());
+          buffer.getBytes(i, readByteBuffer);
+          assertArrayEquals(
+              writeByteBuffer.array(), readByteBuffer.array(), "Byte values should be same.");
+        }
       }
     }
   }
@@ -741,40 +754,42 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnByteBuffersWithIndex() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing bytes of length {}", size);
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing bytes of length {}", size);
-
-      // Fill the write buffer.
-      ByteBuffer writeByteBuffer = newByteBuffer(size);
-      for (int i = 0; i < size; i++) {
-        writeByteBuffer.put(getByteValue(i));
-      }
-
-      // Write data.
-      buffer.clear();
-      writeByteBuffer.flip();
-      for (int i = 0;
-          i + writeByteBuffer.capacity() < bufferSize;
-          i += writeByteBuffer.capacity()) {
-        // Write total=size data in stages of length 1, 2, 3, ...
-        int windex = 0;
-        int wlen = 1;
-        while (windex < writeByteBuffer.capacity()) {
-          int len = Math.min(writeByteBuffer.capacity() - windex, wlen - windex);
-          buffer.setBytes(i + windex, writeByteBuffer, windex, len);
-          windex += len;
-          wlen++;
+        // Fill the write buffer.
+        ByteBuffer writeByteBuffer = newByteBuffer(size);
+        for (int i = 0; i < size; i++) {
+          writeByteBuffer.put(getByteValue(i));
         }
-      }
 
-      // Read the same data and validate.
-      ByteBuffer readByteBuffer = newByteBuffer(writeByteBuffer.capacity());
-      for (int i = 0; i + readByteBuffer.capacity() < bufferSize; i += readByteBuffer.capacity()) {
-        buffer.getBytes(i, readByteBuffer);
-        assertArrayEquals(
-            writeByteBuffer.array(), readByteBuffer.array(), "Byte values should be same.");
+        // Write data.
+        buffer.clear();
+        writeByteBuffer.flip();
+        for (int i = 0;
+            i + writeByteBuffer.capacity() < bufferSize;
+            i += writeByteBuffer.capacity()) {
+          // Write total=size data in stages of length 1, 2, 3, ...
+          int windex = 0;
+          int wlen = 1;
+          while (windex < writeByteBuffer.capacity()) {
+            int len = Math.min(writeByteBuffer.capacity() - windex, wlen - windex);
+            buffer.setBytes(i + windex, writeByteBuffer, windex, len);
+            windex += len;
+            wlen++;
+          }
+        }
+
+        // Read the same data and validate.
+        ByteBuffer readByteBuffer = newByteBuffer(writeByteBuffer.capacity());
+        for (int i = 0;
+            i + readByteBuffer.capacity() < bufferSize;
+            i += readByteBuffer.capacity()) {
+          buffer.getBytes(i, readByteBuffer);
+          assertArrayEquals(
+              writeByteBuffer.array(), readByteBuffer.array(), "Byte values should be same.");
+        }
       }
     }
   }
@@ -783,37 +798,39 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnArrowBuf() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing buffers of length {}", size);
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing buffers of length {}", size);
+        // Set data in write buffer.
+        DatabricksArrowBuf writeBuffer = newBuffer(size);
+        for (int i = 0; i < size; i++) {
+          writeBuffer.writeByte(getByteValue(i));
+        }
 
-      // Set data in write buffer.
-      DatabricksArrowBuf writeBuffer = newBuffer(size);
-      for (int i = 0; i < size; i++) {
-        writeBuffer.writeByte(getByteValue(i));
-      }
+        // Copy data to buffer.
+        buffer.clear();
+        for (int i = 0;
+            i + writeBuffer.capacity() < bufferSize;
+            i += (int) writeBuffer.capacity()) {
+          writeBuffer.readerIndex(0);
+          buffer.setBytes(i, writeBuffer);
+        }
 
-      // Copy data to buffer.
-      buffer.clear();
-      for (int i = 0; i + writeBuffer.capacity() < bufferSize; i += (int) writeBuffer.capacity()) {
-        writeBuffer.readerIndex(0);
-        buffer.setBytes(i, writeBuffer);
-      }
+        // Read the same data and validate.
+        DatabricksArrowBuf readBuffer = newBuffer(size);
+        for (int i = 0; i + readBuffer.capacity() < bufferSize; i += (int) readBuffer.capacity()) {
+          readBuffer.clear();
+          buffer.getBytes(i, readBuffer, 0, (int) readBuffer.capacity());
 
-      // Read the same data and validate.
-      DatabricksArrowBuf readBuffer = newBuffer(size);
-      for (int i = 0; i + readBuffer.capacity() < bufferSize; i += (int) readBuffer.capacity()) {
-        readBuffer.clear();
-        buffer.getBytes(i, readBuffer, 0, (int) readBuffer.capacity());
+          byte[] readBytes = new byte[(int) readBuffer.capacity()];
+          readBuffer.getBytes(0, readBytes);
 
-        byte[] readBytes = new byte[(int) readBuffer.capacity()];
-        readBuffer.getBytes(0, readBytes);
+          byte[] writeBytes = new byte[readBytes.length];
+          writeBuffer.getBytes(0, writeBytes);
 
-        byte[] writeBytes = new byte[readBytes.length];
-        writeBuffer.getBytes(0, writeBytes);
-
-        assertArrayEquals(writeBytes, readBytes, "Byte values should be same for size " + size);
+          assertArrayEquals(writeBytes, readBytes, "Byte values should be same for size " + size);
+        }
       }
     }
   }
@@ -821,45 +838,47 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnArrowBufWithIndex() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing buffers of length {}", size);
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing buffers of length {}", size);
-
-      // Set data in write buffer.
-      DatabricksArrowBuf writeBuffer = newBuffer(size);
-      for (int i = 0; i < size; i++) {
-        writeBuffer.writeByte(getByteValue(i));
-      }
-
-      // Copy data to buffer.
-      buffer.clear();
-      for (int i = 0; i + writeBuffer.capacity() < bufferSize; i += (int) writeBuffer.capacity()) {
-        writeBuffer.readerIndex(0);
-        // Write total=size data in stages of length 1, 2, 3, ...
-        int windex = 0;
-        int wlen = 1;
-        while (windex < writeBuffer.capacity()) {
-          int len = Math.min((int) writeBuffer.capacity() - windex, wlen - windex);
-          buffer.setBytes(i + windex, writeBuffer, windex, len);
-          windex += len;
-          wlen++;
+        // Set data in write buffer.
+        DatabricksArrowBuf writeBuffer = newBuffer(size);
+        for (int i = 0; i < size; i++) {
+          writeBuffer.writeByte(getByteValue(i));
         }
-      }
 
-      // Read the same data and validate.
-      DatabricksArrowBuf readBuffer = newBuffer(size);
-      for (int i = 0; i + readBuffer.capacity() < bufferSize; i += (int) readBuffer.capacity()) {
-        readBuffer.clear();
-        buffer.getBytes(i, readBuffer, 0, (int) readBuffer.capacity());
+        // Copy data to buffer.
+        buffer.clear();
+        for (int i = 0;
+            i + writeBuffer.capacity() < bufferSize;
+            i += (int) writeBuffer.capacity()) {
+          writeBuffer.readerIndex(0);
+          // Write total=size data in stages of length 1, 2, 3, ...
+          int windex = 0;
+          int wlen = 1;
+          while (windex < writeBuffer.capacity()) {
+            int len = Math.min((int) writeBuffer.capacity() - windex, wlen - windex);
+            buffer.setBytes(i + windex, writeBuffer, windex, len);
+            windex += len;
+            wlen++;
+          }
+        }
 
-        byte[] readBytes = new byte[(int) readBuffer.capacity()];
-        readBuffer.getBytes(0, readBytes);
+        // Read the same data and validate.
+        DatabricksArrowBuf readBuffer = newBuffer(size);
+        for (int i = 0; i + readBuffer.capacity() < bufferSize; i += (int) readBuffer.capacity()) {
+          readBuffer.clear();
+          buffer.getBytes(i, readBuffer, 0, (int) readBuffer.capacity());
 
-        byte[] writeBytes = new byte[readBytes.length];
-        writeBuffer.getBytes(0, writeBytes);
+          byte[] readBytes = new byte[(int) readBuffer.capacity()];
+          readBuffer.getBytes(0, readBytes);
 
-        assertArrayEquals(writeBytes, readBytes, "Byte values should be same for size " + size);
+          byte[] writeBytes = new byte[readBytes.length];
+          writeBuffer.getBytes(0, writeBytes);
+
+          assertArrayEquals(writeBytes, readBytes, "Byte values should be same for size " + size);
+        }
       }
     }
   }
@@ -868,27 +887,27 @@ public class DatabricksArrowBufTest {
   @Test
   public void testGetAndSetBytesOnInputAndOutputStream() throws IOException {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int size = 1; size < bufferSize; size++) {
+        logger.info("Testing streams of length {}", size);
+        // Fill the write buffer.
+        byte[] writeBytes = new byte[size];
+        for (int i = 0; i < size; i++) {
+          writeBytes[i] = getByteValue(i);
+        }
 
-    for (int size = 1; size < bufferSize; size++) {
-      logger.info("Testing streams of length {}", size);
-      // Fill the write buffer.
-      byte[] writeBytes = new byte[size];
-      for (int i = 0; i < size; i++) {
-        writeBytes[i] = getByteValue(i);
-      }
+        // Write data.
+        buffer.clear();
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          buffer.setBytes(i, new ByteArrayInputStream(writeBytes), writeBytes.length);
+        }
 
-      // Write data.
-      buffer.clear();
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        buffer.setBytes(i, new ByteArrayInputStream(writeBytes), writeBytes.length);
-      }
-
-      // Read the same data and validate.
-      for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
-        ByteArrayOutputStream readBytes = new ByteArrayOutputStream(writeBytes.length);
-        buffer.getBytes(i, readBytes, writeBytes.length);
-        assertArrayEquals(writeBytes, readBytes.toByteArray(), "Byte values should be same.");
+        // Read the same data and validate.
+        for (int i = 0; i + writeBytes.length < bufferSize; i += writeBytes.length) {
+          ByteArrayOutputStream readBytes = new ByteArrayOutputStream(writeBytes.length);
+          buffer.getBytes(i, readBytes, writeBytes.length);
+          assertArrayEquals(writeBytes, readBytes.toByteArray(), "Byte values should be same.");
+        }
       }
     }
   }
@@ -897,22 +916,24 @@ public class DatabricksArrowBufTest {
   @Test
   public void testPossibleMemoryConsumed() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-    assertEquals(
-        buffer.capacity(),
-        buffer.getPossibleMemoryConsumed(),
-        "Memory consumed should be same for size " + buffer.capacity());
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      assertEquals(
+          buffer.capacity(),
+          buffer.getPossibleMemoryConsumed(),
+          "Memory consumed should be same for size " + buffer.capacity());
+    }
   }
 
   /** Test actual memory consumed. */
   @Test
   public void testActualMemoryConsumed() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-    assertEquals(
-        buffer.capacity(),
-        buffer.getActualMemoryConsumed(),
-        "Memory consumed should be same for size " + buffer.capacity());
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      assertEquals(
+          buffer.capacity(),
+          buffer.getActualMemoryConsumed(),
+          "Memory consumed should be same for size " + buffer.capacity());
+    }
   }
 
   /** Test hex string does not throw exception. */
@@ -963,16 +984,16 @@ public class DatabricksArrowBufTest {
   @Test
   public void testReaderAndWriterIndex() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < buffer.capacity(); i++) {
+        buffer.writeByte(getByteValue(i));
+        assertEquals(i + 1, buffer.writerIndex(), "writerIndex should be same");
+      }
 
-    for (int i = 0; i < buffer.capacity(); i++) {
-      buffer.writeByte(getByteValue(i));
-      assertEquals(i + 1, buffer.writerIndex(), "writerIndex should be same");
-    }
-
-    for (int i = 0; i < buffer.capacity(); i++) {
-      buffer.readByte();
-      assertEquals(i + 1, buffer.readerIndex(), "readerIndex should be same");
+      for (int i = 0; i < buffer.capacity(); i++) {
+        buffer.readByte();
+        assertEquals(i + 1, buffer.readerIndex(), "readerIndex should be same");
+      }
     }
   }
 
@@ -980,24 +1001,24 @@ public class DatabricksArrowBufTest {
   @Test
   public void testSetZero() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < buffer.capacity(); i++) {
+        buffer.writeByte(getByteValue(i));
+      }
 
-    for (int i = 0; i < buffer.capacity(); i++) {
-      buffer.writeByte(getByteValue(i));
-    }
+      buffer.clear();
+      int index = 0;
+      int size = 1;
+      while (index < buffer.capacity()) {
+        int len = Math.min((int) buffer.capacity() - index, size);
+        buffer.setZero(index, len);
+        index += len;
+        size += 1;
+      }
 
-    buffer.clear();
-    int index = 0;
-    int size = 1;
-    while (index < buffer.capacity()) {
-      int len = Math.min((int) buffer.capacity() - index, size);
-      buffer.setZero(index, len);
-      index += len;
-      size += 1;
-    }
-
-    for (int i = 0; i < buffer.capacity(); i++) {
-      assertEquals(0, buffer.getByte(i), "Byte values should be same at index " + index);
+      for (int i = 0; i < buffer.capacity(); i++) {
+        assertEquals(0, buffer.getByte(i), "Byte values should be same at index " + index);
+      }
     }
   }
 
@@ -1005,24 +1026,26 @@ public class DatabricksArrowBufTest {
   @Test
   public void testSetOne() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < buffer.capacity(); i++) {
+        buffer.writeByte(getByteValue(i));
+      }
 
-    for (int i = 0; i < buffer.capacity(); i++) {
-      buffer.writeByte(getByteValue(i));
-    }
+      buffer.clear();
+      int index = 0;
+      int size = 1;
+      while (index < buffer.capacity()) {
+        int len = Math.min((int) buffer.capacity() - index, size);
+        //noinspection deprecation
+        buffer.setOne(index, len);
+        index += len;
+        size += 1;
+      }
 
-    buffer.clear();
-    int index = 0;
-    int size = 1;
-    while (index < buffer.capacity()) {
-      int len = Math.min((int) buffer.capacity() - index, size);
-      buffer.setOne(index, len);
-      index += len;
-      size += 1;
-    }
-
-    for (int i = 0; i < buffer.capacity(); i++) {
-      assertEquals((byte) 0xff, buffer.getByte(i), "Byte values should be same at index " + index);
+      for (int i = 0; i < buffer.capacity(); i++) {
+        assertEquals(
+            (byte) 0xff, buffer.getByte(i), "Byte values should be same at index " + index);
+      }
     }
   }
 
@@ -1047,20 +1070,21 @@ public class DatabricksArrowBufTest {
   @Test
   public void testClear() {
     int bufferSize = 1024;
-    DatabricksArrowBuf buffer = newBuffer(bufferSize);
-    for (int i = 0; i < buffer.capacity(); i++) {
-      buffer.writeByte(getByteValue(i));
-    }
-    for (int i = 0; i < buffer.capacity(); i++) {
-      buffer.readByte();
-    }
+    try (DatabricksArrowBuf buffer = newBuffer(bufferSize)) {
+      for (int i = 0; i < buffer.capacity(); i++) {
+        buffer.writeByte(getByteValue(i));
+      }
+      for (int i = 0; i < buffer.capacity(); i++) {
+        buffer.readByte();
+      }
 
-    assertEquals(buffer.capacity(), buffer.writerIndex(), "Write index should match");
-    assertEquals(buffer.capacity(), buffer.readerIndex(), "Read index should match");
+      assertEquals(buffer.capacity(), buffer.writerIndex(), "Write index should match");
+      assertEquals(buffer.capacity(), buffer.readerIndex(), "Read index should match");
 
-    buffer.clear();
-    assertEquals(0, buffer.writerIndex(), "Write index should be zero");
-    assertEquals(0, buffer.readerIndex(), "Write index should be zero");
+      buffer.clear();
+      assertEquals(0, buffer.writerIndex(), "Write index should be zero");
+      assertEquals(0, buffer.readerIndex(), "Write index should be zero");
+    }
   }
 
   @SuppressWarnings("SameParameterValue")
@@ -1077,6 +1101,7 @@ public class DatabricksArrowBufTest {
     return new DatabricksArrowBuf(refManager, null, byteBuffer, 0, bufferSize);
   }
 
+  @SuppressWarnings("resource")
   private DatabricksArrowBuf newBuffer(int size) {
     DatabricksBufferAllocator allocator = new DatabricksBufferAllocator();
     return (DatabricksArrowBuf) allocator.buffer(size);
