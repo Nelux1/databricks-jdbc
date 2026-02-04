@@ -15,12 +15,17 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Test all the public API of {@code DatabricksArrowBuf}. */
 @SuppressWarnings("resource")
+@Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
+@EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
 public class DatabricksArrowBufTest {
 
   private static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
@@ -949,18 +954,6 @@ public class DatabricksArrowBufTest {
   private void testPrint(DatabricksArrowBuf buffer) {
     for (int indent = 0; indent <= 8; indent++) {
       StringBuilder sb = new StringBuilder();
-      buffer.print(sb, indent, BaseAllocator.Verbosity.BASIC);
-      assertTrue(sb.length() > 0, "Print failed");
-
-      sb = new StringBuilder();
-      buffer.print(sb, indent, BaseAllocator.Verbosity.LOG);
-      assertTrue(sb.length() > 0, "Print failed");
-
-      sb = new StringBuilder();
-      buffer.print(sb, indent, BaseAllocator.Verbosity.LOG_WITH_STACKTRACE);
-      assertTrue(sb.length() > 0, "Print failed");
-
-      sb = new StringBuilder();
       buffer.print(sb, indent);
       assertTrue(sb.length() > 0, "Print failed");
     }

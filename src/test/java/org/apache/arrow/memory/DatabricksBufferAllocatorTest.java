@@ -7,9 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.apache.arrow.memory.rounding.DefaultRoundingPolicy;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
 
 /** Test buffer allocator */
+@Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
+@EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
 public class DatabricksBufferAllocatorTest {
   private static int LIMIT = Integer.MAX_VALUE;
   private static long ALLOCATED_MEMORY = 0;
