@@ -38,7 +38,8 @@ public class DatabricksArrowPatchTest {
   private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_all_types.arrow");
 
   /** Path to a LZ4 compressed arrow chunk. */
-  private static final Path ARROW_CHUNK_COMPRESSED_PATH = Path.of("arrow", "chunk_all_types.arrow.lz4");
+  private static final Path ARROW_CHUNK_COMPRESSED_PATH =
+      Path.of("arrow", "chunk_all_types.arrow.lz4");
 
   /** Compressed Arrow file suffix. */
   private static final String ARROW_CHUNK_COMPRESSED_FILE_SUFFIX = ".lz4";
