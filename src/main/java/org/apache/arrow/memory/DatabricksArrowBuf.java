@@ -40,7 +40,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private volatile long capacity;
   private long readerIndex;
   private long writerIndex;
-  private final long id = bufferId.getAndIncrement();
 
   /** Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class. */
   private static final int MEMORY_ADDRESS = 0;
@@ -196,7 +195,7 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   @Override
   public String toString() {
-    return String.format("DatabricksArrowBuf id:%d capacity:%d, offset:%d", id, capacity, offset);
+    return String.format("DatabricksArrowBuf id:%d capacity:%d, offset:%d", getId(), capacity, offset);
   }
 
   @Override
