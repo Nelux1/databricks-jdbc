@@ -21,6 +21,8 @@
 // Description of changes:
 //        - Patched ArrowBuf to be non-final and extensible.
 //        - Patched ArrowBuf to remove dependency on BaseAllocator.
+//        - Patched ArrowBuf to modify method visibility from public to private for
+//           `print(StringBuilder sb, int indent, Verbosity verbosity)`
 // -------------------------------------------------------------------------
 
 package org.apache.arrow.memory;
@@ -39,7 +41,6 @@ import org.apache.arrow.memory.util.CommonUtil;
 import org.apache.arrow.memory.util.HistoricalLog;
 import org.apache.arrow.memory.util.MemoryUtil;
 import org.apache.arrow.util.Preconditions;
-import org.apache.arrow.util.VisibleForTesting;
 
 /**
  * ArrowBuf serves as a facade over underlying memory by providing several access APIs to read/write
@@ -1132,8 +1133,13 @@ public class ArrowBuf implements AutoCloseable {
    * <p>It will include history if BaseAllocator.DEBUG is true and the
    * verbosity.includeHistoricalLog are true.
    */
-  @VisibleForTesting
-  public void print(StringBuilder sb, int indent, Verbosity verbosity) {
+  // ---- Databricks patch start ----
+  // ---- Modify method visibility public -> private. It was annotated with @VisibleForTesting.
+  // ---- This ensures that DatabricksBufferAllocator need not have a public method with
+  // ---- Verbosity method parameter which might trigger unsafe path class loading and fail on
+  // ---- JVM 16+ which does not have "--add-opens=java.base/java.nio=ALL-UNNAMED" jvm arg present.
+  private void print(StringBuilder sb, int indent, Verbosity verbosity) {
+    // ---- Databricks patch end ----
     CommonUtil.indent(sb, indent).append(toString());
 
     if (historicalLog != null && verbosity.includeHistoricalLog) {

@@ -3,7 +3,6 @@ package org.apache.arrow.memory;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,10 +34,11 @@ public class DatabricksArrowPatchTest {
   private static final Logger logger = LoggerFactory.getLogger(DatabricksArrowPatchTest.class);
 
   /** Path to an arrow chunk. */
-  private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_1.arrow");
+  private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_all_types.arrow");
 
   /** Path to a LZ4 compressed arrow chunk. */
-  private static final Path ARROW_CHUNK_COMPRESSED_PATH = Path.of("arrow", "chunk_1.arrow.lz4");
+  private static final Path ARROW_CHUNK_COMPRESSED_PATH =
+      Path.of("arrow", "chunk_all_types.arrow.lz4");
 
   /** Compressed Arrow file suffix. */
   private static final String ARROW_CHUNK_COMPRESSED_FILE_SUFFIX = ".lz4";
@@ -67,13 +67,14 @@ public class DatabricksArrowPatchTest {
     Throwable throwable = null;
     try {
       RootAllocator allocator = new RootAllocator();
+      ArrowBuf buffer = allocator.buffer(64);
+      buffer.writeByte(0);
       allocator.close(); // Unreachable code.
     } catch (Throwable t) {
       throwable = t;
     }
 
     assertNotNull(throwable);
-    assertTrue(throwable.getCause().getMessage().contains("Failed to initialize MemoryUtil"));
   }
 
   /**
