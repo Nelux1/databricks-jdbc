@@ -997,6 +997,32 @@ public class DatabricksArrowBufTest {
     }
   }
 
+  /** Test empty buffer (size 0) behavior. */
+  @Test
+  public void testEmptyBuffer() {
+    try (DatabricksArrowBuf buffer = newBuffer(0)) {
+      // Basic properties
+      assertEquals(0, buffer.capacity(), "Empty buffer should have 0 capacity");
+      assertEquals(0, buffer.readableBytes(), "Empty buffer should have 0 readable bytes");
+      assertEquals(0, buffer.writableBytes(), "Empty buffer should have 0 writable bytes");
+
+      // checkBytes with 0 length should succeed
+      assertDoesNotThrow(() -> buffer.checkBytes(0, 0), "checkBytes(0, 0) should not throw");
+
+      // nioBuffer should return empty buffer
+      ByteBuffer nioBuffer = buffer.nioBuffer();
+      assertEquals(0, nioBuffer.remaining(), "NIO buffer should be empty");
+
+      // slice() should work
+      ArrowBuf slice = buffer.slice();
+      assertEquals(0, slice.capacity(), "Slice of empty buffer should be empty");
+
+      // slice(0, 0) should work
+      ArrowBuf slice2 = buffer.slice(0, 0);
+      assertEquals(0, slice2.capacity(), "slice(0, 0) should return empty buffer");
+    }
+  }
+
   /** Test set zero. */
   @Test
   public void testSetZero() {
