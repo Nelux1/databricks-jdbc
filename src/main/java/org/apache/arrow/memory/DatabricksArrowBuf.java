@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.arrow.memory.util.CommonUtil;
 import org.apache.arrow.util.Preconditions;
-import org.apache.arrow.util.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +40,6 @@ public class DatabricksArrowBuf extends ArrowBuf {
   private volatile long capacity;
   private long readerIndex;
   private long writerIndex;
-  private final long id = bufferId.getAndIncrement();
 
   /** Memory address used to instantiate the super class {@code ArrowBuf}. Unused in this class. */
   private static final int MEMORY_ADDRESS = 0;
@@ -197,7 +195,8 @@ public class DatabricksArrowBuf extends ArrowBuf {
 
   @Override
   public String toString() {
-    return String.format("DatabricksArrowBuf id:%d capacity:%d, offset:%d", id, capacity, offset);
+    return String.format(
+        "DatabricksArrowBuf id:%d capacity:%d, offset:%d", getId(), capacity, offset);
   }
 
   @Override
@@ -635,14 +634,9 @@ public class DatabricksArrowBuf extends ArrowBuf {
   }
 
   @Override
-  @VisibleForTesting
-  public void print(StringBuilder sb, int indent, BaseAllocator.Verbosity verbosity) {
-    CommonUtil.indent(sb, indent).append(toString());
-  }
-
-  @Override
   public void print(StringBuilder sb, int indent) {
-    print(sb, indent, BaseAllocator.Verbosity.LOG_WITH_STACKTRACE);
+    CommonUtil.indent(sb, indent).append(this);
+    ;
   }
 
   @Override

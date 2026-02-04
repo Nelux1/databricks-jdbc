@@ -34,16 +34,18 @@ import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 @State(Scope.Benchmark)
+@BenchmarkMode(Mode.AverageTime)
+@Fork(value = 1)
+@Measurement(iterations = 20, time = 100, timeUnit = TimeUnit.MILLISECONDS)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
+@Warmup(iterations = 20, time = 100, timeUnit = TimeUnit.MILLISECONDS)
 public class ArrowParsingBenchmark {
-  private static final int FORK_VALUE = 1;
-  private static final int ITERATIONS = 20;
-  private static final int WARMUP_ITERATIONS = 20;
-
   /** Path to an arrow chunk. */
-  private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_1.arrow");
+  private static final Path ARROW_CHUNK_PATH = Path.of("arrow", "chunk_all_types.arrow");
 
   /** Path to a LZ4 compressed arrow chunk. */
-  private static final Path ARROW_CHUNK_COMPRESSED_PATH = Path.of("arrow", "chunk_1.arrow.lz4");
+  private static final Path ARROW_CHUNK_COMPRESSED_PATH =
+      Path.of("arrow", "chunk_all_types.arrow.lz4");
 
   /** Compressed Arrow file suffix. */
   private static final String ARROW_CHUNK_COMPRESSED_FILE_SUFFIX = ".lz4";
@@ -74,11 +76,6 @@ public class ArrowParsingBenchmark {
   }
 
   @Benchmark
-  @BenchmarkMode(Mode.AverageTime)
-  @Fork(value = FORK_VALUE)
-  @Measurement(iterations = ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
-  @OutputTimeUnit(TimeUnit.MILLISECONDS)
-  @Warmup(iterations = WARMUP_ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
   public List<Map<String, Object>> parseArrowChunk() throws IOException {
     try (BufferAllocator allocator = new RootAllocator()) {
       return parseArrowStream(arrowChunkBytes, false, allocator);
@@ -86,11 +83,6 @@ public class ArrowParsingBenchmark {
   }
 
   @Benchmark
-  @BenchmarkMode(Mode.AverageTime)
-  @Fork(value = FORK_VALUE)
-  @Measurement(iterations = ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
-  @OutputTimeUnit(TimeUnit.MILLISECONDS)
-  @Warmup(iterations = WARMUP_ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
   public List<Map<String, Object>> parseArrowCompressedChunk() throws IOException {
     try (BufferAllocator allocator = new RootAllocator()) {
       return parseArrowStream(arrowChunkCompressedBytes, true, allocator);
@@ -98,11 +90,6 @@ public class ArrowParsingBenchmark {
   }
 
   @Benchmark
-  @BenchmarkMode(Mode.AverageTime)
-  @Fork(value = FORK_VALUE)
-  @Measurement(iterations = ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
-  @OutputTimeUnit(TimeUnit.MILLISECONDS)
-  @Warmup(iterations = WARMUP_ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
   public List<Map<String, Object>> parsePatchedArrowChunk() throws IOException {
     try (BufferAllocator allocator = new DatabricksBufferAllocator()) {
       return parseArrowStream(arrowChunkBytes, false, allocator);
@@ -110,11 +97,6 @@ public class ArrowParsingBenchmark {
   }
 
   @Benchmark
-  @BenchmarkMode(Mode.AverageTime)
-  @Fork(value = FORK_VALUE)
-  @Measurement(iterations = ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
-  @OutputTimeUnit(TimeUnit.MILLISECONDS)
-  @Warmup(iterations = WARMUP_ITERATIONS, time = 100, timeUnit = TimeUnit.MILLISECONDS)
   public List<Map<String, Object>> parsePatchedArrowCompressedChunk() throws IOException {
     try (BufferAllocator allocator = new DatabricksBufferAllocator()) {
       return parseArrowStream(arrowChunkCompressedBytes, true, allocator);
