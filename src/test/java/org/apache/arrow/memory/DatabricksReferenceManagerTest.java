@@ -5,9 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Random;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
 
 /** Test reference manager */
+@Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
+@EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
 public class DatabricksReferenceManagerTest {
   private static int REF_COUNT = 1;
 
