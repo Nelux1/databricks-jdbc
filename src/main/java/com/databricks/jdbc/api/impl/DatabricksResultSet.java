@@ -14,6 +14,7 @@ import com.databricks.jdbc.api.impl.converters.ConverterHelper;
 import com.databricks.jdbc.api.impl.converters.ObjectConverter;
 import com.databricks.jdbc.api.impl.thrift.StreamingColumnarResult;
 import com.databricks.jdbc.api.impl.volume.VolumeOperationResult;
+import com.databricks.jdbc.api.internal.IDatabricksConnectionContext;
 import com.databricks.jdbc.api.internal.IDatabricksResultSetInternal;
 import com.databricks.jdbc.api.internal.IDatabricksSession;
 import com.databricks.jdbc.api.internal.IDatabricksStatementInternal;
@@ -65,6 +66,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   private final DatabricksResultSetMetaData resultSetMetaData;
   private final StatementType statementType;
   private final IDatabricksStatementInternal parentStatement;
+  private final IDatabricksConnectionContext connectionContext;
   private Long updateCount;
   private boolean isClosed;
   private SQLWarning warnings = null;
@@ -109,7 +111,8 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       executionResult = null;
       resultSetMetaData = null;
     }
-    this.complexDatatypeSupport = session.getConnectionContext().isComplexDatatypeSupportEnabled();
+    this.connectionContext = session.getConnectionContext();
+    this.complexDatatypeSupport = this.connectionContext.isComplexDatatypeSupportEnabled();
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = parentStatement;
@@ -133,6 +136,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = parentStatement;
+    this.connectionContext = null;
     this.isClosed = false;
     this.wasNull = false;
     this.complexDatatypeSupport = complexDatatypeSupport;
@@ -175,7 +179,8 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
       this.executionResult = null;
       this.resultSetMetaData = null;
     }
-    this.complexDatatypeSupport = session.getConnectionContext().isComplexDatatypeSupportEnabled();
+    this.connectionContext = session.getConnectionContext();
+    this.complexDatatypeSupport = this.connectionContext.isComplexDatatypeSupportEnabled();
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = parentStatement;
@@ -209,6 +214,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = null;
+    this.connectionContext = null;
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -239,6 +245,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = null;
+    this.connectionContext = null;
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -258,6 +265,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = null;
+    this.connectionContext = null;
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -266,8 +274,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   public boolean next() throws SQLException {
     checkIfClosed();
     boolean hasNext = this.executionResult.next();
-    TelemetryHelper.recordResultSetIteration(
-        parentStatement, statementId, resultSetMetaData.getChunkCount(), hasNext);
+    Long chunkCount = resultSetMetaData.getChunkCount();
+    if (connectionContext != null && chunkCount != null) {
+      TelemetryHelper.recordResultSetIteration(
+          connectionContext, statementId.toSQLExecStatementId(), chunkCount, hasNext);
+    }
     return hasNext;
   }
 
