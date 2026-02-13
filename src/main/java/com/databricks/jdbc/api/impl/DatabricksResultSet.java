@@ -274,11 +274,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   public boolean next() throws SQLException {
     checkIfClosed();
     boolean hasNext = this.executionResult.next();
-    Long chunkCount = resultSetMetaData.getChunkCount();
-    if (parentStatement != null && connectionContext != null && chunkCount != null) {
-      TelemetryHelper.recordResultSetIteration(
-          connectionContext, statementId.toSQLExecStatementId(), chunkCount, hasNext);
-    }
+    TelemetryHelper.recordResultSetIteration(
+        connectionContext,
+        statementId.toSQLExecStatementId(),
+        resultSetMetaData.getChunkCount(),
+        hasNext);
     return hasNext;
   }
 
