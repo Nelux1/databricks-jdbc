@@ -32,11 +32,16 @@ public class JDBCDriverComparisonTest {
   private static final String OSS_SEA_DRIVER_JDBC_URL =
       "jdbc:databricks://benchmarking-prod-aws-us-west-2.cloud.databricks.com:443/default;ssl=1;authMech=3;httpPath=/sql/1.0/warehouses/e3c43f3911e50d7c;useThriftClient=0";
   private static Connection oldDriverConnection;
-  private static Connection ossDriverConnection;
+  private static Connection ossThriftConnection;
+  private static Connection ossSeaConnection;
   private static Path tempDir;
   private static TestReporter reporter;
+  // ResultSets for Old vs SEA comparison
   private static ResultSet oldDriverResultSet;
-  private static ResultSet ossDriverResultSet;
+  private static ResultSet ossSeaResultSet1;
+  // ResultSets for Thrift vs SEA comparison
+  private static ResultSet ossThriftResultSet;
+  private static ResultSet ossSeaResultSet2;
 
   @BeforeAll
   static void setup() throws Exception {
@@ -44,7 +49,7 @@ public class JDBCDriverComparisonTest {
     tempDir = Files.createTempDirectory("jdbc-drivers");
 
     // Extract and load drivers
-    URL oldDriverJarUrl = extractJarToTemp("databricks-jdbc-2.7.1.jar", tempDir);
+    URL oldDriverJarUrl = extractJarToTemp("databricks-jdbc-2.7.6.jar", tempDir);
 
     if (oldDriverJarUrl == null) {
       throw new RuntimeException("Unable to find JDBC driver JARs in the classpath");
@@ -64,28 +69,33 @@ public class JDBCDriverComparisonTest {
     String pwd = System.getenv("DATABRICKS_COMPARATOR_TOKEN");
 
     Properties props = new Properties();
-    //    oldDriverConnection = oldDriver.connect(OLD_DRIVER_JDBC_URL + "PWD=" + pwd, props);
-    oldDriverConnection =
-        DriverManager.getConnection(
-            OSS_DRIVER_JDBC_URL, "token", pwd);
-    ossDriverConnection =
-        DriverManager.getConnection(
-            OSS_SEA_DRIVER_JDBC_URL, "token", pwd);
+    // Use the old driver (2.7.6)
+    oldDriverConnection = oldDriver.connect(OLD_DRIVER_JDBC_URL + "PWD=" + pwd, props);
+
+    // OSS driver with Thrift
+    ossThriftConnection = DriverManager.getConnection(OSS_DRIVER_JDBC_URL, "token", pwd);
+
+    // OSS driver with SEA
+    ossSeaConnection = DriverManager.getConnection(OSS_SEA_DRIVER_JDBC_URL, "token", pwd);
+
     reporter = new TestReporter(Path.of("jdbc-comparison-report.txt"));
 
     String queryResultSetTypesTable = "select * from main.tpch_sf100_delta.customer limit 100";
+    // Create separate ResultSets for each comparison pair to avoid reuse issues
     oldDriverResultSet =
         oldDriverConnection.createStatement().executeQuery(queryResultSetTypesTable);
-    oldDriverResultSet.next();
-    ossDriverResultSet =
-        ossDriverConnection.createStatement().executeQuery(queryResultSetTypesTable);
-    ossDriverResultSet.next();
+    ossSeaResultSet1 = ossSeaConnection.createStatement().executeQuery(queryResultSetTypesTable);
+
+    ossThriftResultSet =
+        ossThriftConnection.createStatement().executeQuery(queryResultSetTypesTable);
+    ossSeaResultSet2 = ossSeaConnection.createStatement().executeQuery(queryResultSetTypesTable);
   }
 
   @AfterAll
   static void teardown() throws Exception {
     if (oldDriverConnection != null) oldDriverConnection.close();
-    if (ossDriverConnection != null) ossDriverConnection.close();
+    if (ossThriftConnection != null) ossThriftConnection.close();
+    if (ossSeaConnection != null) ossSeaConnection.close();
     // Clean up temp directory
     if (tempDir != null) {
       Files.walk(tempDir)
@@ -102,21 +112,86 @@ public class JDBCDriverComparisonTest {
     reporter.generateReport();
   }
 
+  /**
+   * Helper method for tests that need connections. Prepends connection pair info (name, conn1,
+   * conn2) to original arguments.
+   */
+  private static Stream<Arguments> withConnectionPairs(Stream<Arguments> baseProvider) {
+    List<Arguments> base = baseProvider.collect(Collectors.toList());
+    List<Arguments> combined = new ArrayList<>();
+
+    // Define connection pairs
+    Object[][] connectionPairs = {
+      {"Old(2.7.6) vs OSS-SEA", oldDriverConnection, ossSeaConnection},
+      {"OSS-Thrift vs OSS-SEA", ossThriftConnection, ossSeaConnection}
+    };
+
+    // Combine each pair with each base argument
+    for (Object[] pair : connectionPairs) {
+      for (Arguments arg : base) {
+        Object[] originalArgs = arg.get();
+        // Create new array: [name, conn1, conn2, ...originalArgs]
+        Object[] newArgs = new Object[3 + originalArgs.length];
+        newArgs[0] = pair[0]; // comparison name
+        newArgs[1] = pair[1]; // connection 1
+        newArgs[2] = pair[2]; // connection 2
+        System.arraycopy(originalArgs, 0, newArgs, 3, originalArgs.length);
+        combined.add(Arguments.of(newArgs));
+      }
+    }
+
+    return combined.stream();
+  }
+
+  /**
+   * Helper method for tests that need ResultSets. Prepends ResultSet pair info (name, rs1, rs2) to
+   * original arguments.
+   */
+  private static Stream<Arguments> withResultSetPairs(Stream<Arguments> baseProvider) {
+    List<Arguments> base = baseProvider.collect(Collectors.toList());
+    List<Arguments> combined = new ArrayList<>();
+
+    // Define ResultSet pairs - each with separate instances to avoid reuse
+    Object[][] resultSetPairs = {
+      {"Old(2.7.6) vs OSS-SEA", oldDriverResultSet, ossSeaResultSet1},
+      {"OSS-Thrift vs OSS-SEA", ossThriftResultSet, ossSeaResultSet2}
+    };
+
+    // Combine each pair with each base argument
+    for (Object[] pair : resultSetPairs) {
+      for (Arguments arg : base) {
+        Object[] originalArgs = arg.get();
+        // Create new array: [name, rs1, rs2, ...originalArgs]
+        Object[] newArgs = new Object[3 + originalArgs.length];
+        newArgs[0] = pair[0]; // comparison name
+        newArgs[1] = pair[1]; // resultSet 1
+        newArgs[2] = pair[2]; // resultSet 2
+        System.arraycopy(originalArgs, 0, newArgs, 3, originalArgs.length);
+        combined.add(Arguments.of(newArgs));
+      }
+    }
+
+    return combined.stream();
+  }
+
   @ParameterizedTest
   @MethodSource("provideSQLQueries")
   @DisplayName("Compare SQL Query Results")
-  void compareSQLQueryResults(String query, String description) {
+  void compareSQLQueryResults(
+      String comparisonName, Connection conn1, Connection conn2, String query, String description) {
     assertDoesNotThrow(
         () -> {
-          ResultSet oldDriverRs = oldDriverConnection.createStatement().executeQuery(query);
-          ResultSet ossDriverRs = ossDriverConnection.createStatement().executeQuery(query);
+          ResultSet result1 = conn1.createStatement().executeQuery(query);
+          ResultSet result2 = conn2.createStatement().executeQuery(query);
 
           ComparisonResult result =
-              ResultSetComparator.compare("sql", query, new String[] {}, oldDriverRs, ossDriverRs);
+              ResultSetComparator.compare(
+                  "sql [" + comparisonName + "]", query, new String[] {}, result1, result2);
           reporter.addResult(result);
 
           if (result.hasDifferences()) {
-            System.err.println("Differences found in query results for: " + description);
+            System.err.println(
+                "[" + comparisonName + "] Differences found in query results for: " + description);
             System.err.println(result);
           }
         });
@@ -125,22 +200,27 @@ public class JDBCDriverComparisonTest {
   @ParameterizedTest
   @MethodSource("provideMetadataMethods")
   @DisplayName("Compare Metadata API Results")
-  void compareMetadataResults(String methodName, Object[] args) {
+  void compareMetadataResults(
+      String comparisonName, Connection conn1, Connection conn2, String methodName, Object[] args) {
     assertDoesNotThrow(
         () -> {
-          DatabaseMetaData oldDriverMetadata = oldDriverConnection.getMetaData();
-          DatabaseMetaData ossDriverMetadata = ossDriverConnection.getMetaData();
+          DatabaseMetaData metadata1 = conn1.getMetaData();
+          DatabaseMetaData metadata2 = conn2.getMetaData();
 
-          Object oldDriverRs = ReflectionUtils.executeMethod(oldDriverMetadata, methodName, args);
-          Object ossDriverRs = ReflectionUtils.executeMethod(ossDriverMetadata, methodName, args);
+          Object result1 = ReflectionUtils.executeMethod(metadata1, methodName, args);
+          Object result2 = ReflectionUtils.executeMethod(metadata2, methodName, args);
 
           ComparisonResult result =
               ResultSetComparator.compare(
-                  "DatabaseMetaData", methodName, args, oldDriverRs, ossDriverRs);
+                  "DatabaseMetaData [" + comparisonName + "]", methodName, args, result1, result2);
           reporter.addResult(result);
 
           if (result.hasDifferences()) {
-            System.err.println("Differences found in metadata results for method: " + methodName);
+            System.err.println(
+                "["
+                    + comparisonName
+                    + "] Differences found in metadata results for method: "
+                    + methodName);
             System.err.println("Args: " + getStringForArgs(args));
             System.err.println(result);
           }
@@ -150,21 +230,24 @@ public class JDBCDriverComparisonTest {
   @ParameterizedTest
   @MethodSource("provideResultSetMethods")
   @DisplayName("Compare ResultSet API Results")
-  void compareResultSetResults(String methodName, Object[] args) {
+  void compareResultSetResults(
+      String comparisonName, ResultSet rs1, ResultSet rs2, String methodName, Object[] args) {
     assertDoesNotThrow(
         () -> {
-          Object oldDriverResult =
-              ReflectionUtils.executeMethod(oldDriverResultSet, methodName, args);
-          Object ossDriverResult =
-              ReflectionUtils.executeMethod(ossDriverResultSet, methodName, args);
+          Object result1 = ReflectionUtils.executeMethod(rs1, methodName, args);
+          Object result2 = ReflectionUtils.executeMethod(rs2, methodName, args);
 
           ComparisonResult result =
               ResultSetComparator.compare(
-                  "ResultSet", methodName, args, oldDriverResult, ossDriverResult);
+                  "ResultSet [" + comparisonName + "]", methodName, args, result1, result2);
           reporter.addResult(result);
 
           if (result.hasDifferences()) {
-            System.err.println("Differences found in ResultSet results for method: " + methodName);
+            System.err.println(
+                "["
+                    + comparisonName
+                    + "] Differences found in ResultSet results for method: "
+                    + methodName);
             System.err.println("Args: " + getStringForArgs(args));
             System.err.println(result);
           }
@@ -174,22 +257,26 @@ public class JDBCDriverComparisonTest {
   @ParameterizedTest
   @MethodSource("provideResultSetMetaDataMethods")
   @DisplayName("Compare ResultSetMetaData API Results")
-  void compareResultSetMetaDataResults(String methodName, Object[] args) {
+  void compareResultSetMetaDataResults(
+      String comparisonName, ResultSet rs1, ResultSet rs2, String methodName, Object[] args) {
     assertDoesNotThrow(
         () -> {
-          ResultSetMetaData oldDriverRsMd = oldDriverResultSet.getMetaData();
-          ResultSetMetaData ossDriverRsMd = ossDriverResultSet.getMetaData();
-          Object oldDriverResult = ReflectionUtils.executeMethod(oldDriverRsMd, methodName, args);
-          Object ossDriverResult = ReflectionUtils.executeMethod(ossDriverRsMd, methodName, args);
+          ResultSetMetaData metadata1 = rs1.getMetaData();
+          ResultSetMetaData metadata2 = rs2.getMetaData();
+          Object result1 = ReflectionUtils.executeMethod(metadata1, methodName, args);
+          Object result2 = ReflectionUtils.executeMethod(metadata2, methodName, args);
 
           ComparisonResult result =
               ResultSetComparator.compare(
-                  "ResultSetMetaData", methodName, args, oldDriverResult, ossDriverResult);
+                  "ResultSetMetaData [" + comparisonName + "]", methodName, args, result1, result2);
           reporter.addResult(result);
 
           if (result.hasDifferences()) {
             System.err.println(
-                "Differences found in ResultSetMetaData results for method: " + methodName);
+                "["
+                    + comparisonName
+                    + "] Differences found in ResultSetMetaData results for method: "
+                    + methodName);
             System.err.println("Args: " + getStringForArgs(args));
             System.err.println(result);
           }
@@ -199,21 +286,24 @@ public class JDBCDriverComparisonTest {
   @ParameterizedTest
   @MethodSource("provideConnectionMethods")
   @DisplayName("Compare Connection API Results")
-  void compareConnectionResults(String methodName, Object[] args) {
+  void compareConnectionResults(
+      String comparisonName, Connection conn1, Connection conn2, String methodName, Object[] args) {
     assertDoesNotThrow(
         () -> {
-          Object oldDriverResult =
-              ReflectionUtils.executeMethod(oldDriverConnection, methodName, args);
-          Object ossDriverResult =
-              ReflectionUtils.executeMethod(ossDriverConnection, methodName, args);
+          Object result1 = ReflectionUtils.executeMethod(conn1, methodName, args);
+          Object result2 = ReflectionUtils.executeMethod(conn2, methodName, args);
 
           ComparisonResult result =
               ResultSetComparator.compare(
-                  "Connection", methodName, args, oldDriverResult, ossDriverResult);
+                  "Connection [" + comparisonName + "]", methodName, args, result1, result2);
           reporter.addResult(result);
 
           if (result.hasDifferences()) {
-            System.err.println("Differences found in Connection results for method: " + methodName);
+            System.err.println(
+                "["
+                    + comparisonName
+                    + "] Differences found in Connection results for method: "
+                    + methodName);
             System.err.println("Args: " + getStringForArgs(args));
             System.err.println(result);
           }
@@ -221,28 +311,36 @@ public class JDBCDriverComparisonTest {
   }
 
   private static Stream<Arguments> provideSQLQueries() {
-    return Stream.of(
-        Arguments.of("SELECT * FROM main.tpcds_sf100_delta.catalog_sales limit 5", "TPC-DS query"));
+    Stream<Arguments> base =
+        Stream.of(
+            Arguments.of(
+                "SELECT * FROM main.tpcds_sf100_delta.catalog_sales limit 5", "TPC-DS query"));
+    return withConnectionPairs(base);
   }
 
   private static Stream<Arguments> provideMetadataMethods() {
     DatabaseMetaDataTestParams params = new DatabaseMetaDataTestParams();
-    return ReflectionUtils.provideMethodsForClass(DatabaseMetaData.class, params);
+    Stream<Arguments> base = ReflectionUtils.provideMethodsForClass(DatabaseMetaData.class, params);
+    return withConnectionPairs(base);
   }
 
   private static Stream<Arguments> provideResultSetMethods() {
     ResultSetTestParams params = new ResultSetTestParams();
-    return ReflectionUtils.provideMethodsForClass(ResultSet.class, params);
+    Stream<Arguments> base = ReflectionUtils.provideMethodsForClass(ResultSet.class, params);
+    return withResultSetPairs(base);
   }
 
   private static Stream<Arguments> provideResultSetMetaDataMethods() {
     ResultSetMetaDataTestParams params = new ResultSetMetaDataTestParams();
-    return ReflectionUtils.provideMethodsForClass(ResultSetMetaData.class, params);
+    Stream<Arguments> base =
+        ReflectionUtils.provideMethodsForClass(ResultSetMetaData.class, params);
+    return withResultSetPairs(base);
   }
 
   private static Stream<Arguments> provideConnectionMethods() {
     ConnectionTestParams params = new ConnectionTestParams();
-    return ReflectionUtils.provideMethodsForClass(Connection.class, params);
+    Stream<Arguments> base = ReflectionUtils.provideMethodsForClass(Connection.class, params);
+    return withConnectionPairs(base);
   }
 
   private static URL extractJarToTemp(String jarName, Path tempDir) {
