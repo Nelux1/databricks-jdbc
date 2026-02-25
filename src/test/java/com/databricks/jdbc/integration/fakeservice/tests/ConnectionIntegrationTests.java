@@ -1,6 +1,7 @@
 package com.databricks.jdbc.integration.fakeservice.tests;
 
 import static com.databricks.jdbc.integration.IntegrationTestUtil.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.databricks.jdbc.common.DatabricksJdbcUrlParams;
@@ -78,6 +79,50 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     extraProps.put(DatabricksJdbcUrlParams.AUTH_ACCESS_TOKEN.getParamName(), getDatabricksToken());
     Connection conn = DriverManager.getConnection(url, createConnectionProperties(extraProps));
     assert ((conn != null) && !conn.isClosed());
+
+    conn.close();
+  }
+
+  // --- Connection management tests ---
+
+  @Test
+  void testIsClosed_NewConnection() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+    assertFalse(conn.isClosed(), "Newly created connection should not be closed");
+
+    conn.close();
+    assertTrue(conn.isClosed(), "Connection should be closed after close()");
+  }
+
+  @Test
+  void testIsValid_ActiveConnection() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    // isValid with a positive timeout should return true for an active connection
+    assertTrue(conn.isValid(5), "Active connection should be valid");
+
+    conn.close();
+    assertFalse(conn.isValid(5), "Closed connection should not be valid");
+  }
+
+  @Test
+  void testGetCatalog_ReturnsNonNull() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    String catalog = conn.getCatalog();
+    assertNotNull(catalog, "getCatalog() should return non-null for active connection");
+    assertFalse(catalog.isEmpty(), "getCatalog() should return non-empty string");
+
+    conn.close();
+  }
+
+  @Test
+  void testGetSchema_ReturnsNonNull() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    String schema = conn.getSchema();
+    assertNotNull(schema, "getSchema() should return non-null for active connection");
+    assertFalse(schema.isEmpty(), "getSchema() should return non-empty string");
 
     conn.close();
   }
