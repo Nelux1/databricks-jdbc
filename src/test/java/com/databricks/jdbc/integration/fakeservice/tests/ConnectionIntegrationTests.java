@@ -2,15 +2,12 @@ package com.databricks.jdbc.integration.fakeservice.tests;
 
 import static com.databricks.jdbc.integration.IntegrationTestUtil.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.databricks.jdbc.common.DatabricksJdbcUrlParams;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.integration.fakeservice.AbstractFakeServiceIntegrationTests;
 import com.databricks.jdbc.integration.fakeservice.FakeServiceConfigLoader;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -83,7 +80,7 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     conn.close();
   }
 
-  // --- Connection management tests ---
+  // --- Connection properties and management tests ---
 
   @Test
   void testIsClosed_NewConnection() throws SQLException {
@@ -123,6 +120,41 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     String schema = conn.getSchema();
     assertNotNull(schema, "getSchema() should return non-null for active connection");
     assertFalse(schema.isEmpty(), "getSchema() should return non-empty string");
+
+    conn.close();
+  }
+
+  @Test
+  void testGetMetaData_ReturnsNonNull() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    DatabaseMetaData metaData = conn.getMetaData();
+    assertNotNull(metaData, "getMetaData() should return non-null");
+    assertNotNull(metaData.getDriverName(), "Driver name should not be null");
+    assertFalse(metaData.getDriverName().isEmpty(), "Driver name should not be empty");
+
+    conn.close();
+  }
+
+  @Test
+  void testGetWarnings_AndClearWarnings() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    // New connection may or may not have warnings, but getWarnings() should not throw
+    SQLWarning warnings = conn.getWarnings();
+    // clearWarnings should not throw
+    conn.clearWarnings();
+    assertNull(conn.getWarnings(), "Warnings should be null after clearWarnings()");
+
+    conn.close();
+  }
+
+  @Test
+  void testGetClientInfo_ReturnsProperties() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    Properties clientInfo = conn.getClientInfo();
+    assertNotNull(clientInfo, "getClientInfo() should return non-null Properties");
 
     conn.close();
   }
