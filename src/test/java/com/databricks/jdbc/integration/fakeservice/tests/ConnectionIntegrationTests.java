@@ -113,6 +113,17 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     conn.close();
   }
 
+  // --- Transaction and connection attribute tests ---
+
+  @Test
+  void testAutoCommit_DefaultIsTrue() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    assertTrue(conn.getAutoCommit(), "Default autoCommit should be true");
+
+    conn.close();
+  }
+
   @Test
   void testGetSchema_ReturnsNonNull() throws SQLException {
     Connection conn = getValidJDBCConnection();
@@ -120,6 +131,16 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     String schema = conn.getSchema();
     assertNotNull(schema, "getSchema() should return non-null for active connection");
     assertFalse(schema.isEmpty(), "getSchema() should return non-empty string");
+
+    conn.close();
+  }
+
+  @Test
+  void testIsReadOnly_Default() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    boolean readOnly = conn.isReadOnly();
+    assertFalse(readOnly, "Default connection should not be read-only");
 
     conn.close();
   }
@@ -155,6 +176,22 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
 
     Properties clientInfo = conn.getClientInfo();
     assertNotNull(clientInfo, "getClientInfo() should return non-null Properties");
+
+    conn.close();
+  }
+
+  @Test
+  void testGetTransactionIsolation() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    int isolation = conn.getTransactionIsolation();
+    assertTrue(
+        isolation == Connection.TRANSACTION_NONE
+            || isolation == Connection.TRANSACTION_READ_UNCOMMITTED
+            || isolation == Connection.TRANSACTION_READ_COMMITTED
+            || isolation == Connection.TRANSACTION_REPEATABLE_READ
+            || isolation == Connection.TRANSACTION_SERIALIZABLE,
+        "Transaction isolation should be a valid JDBC constant");
 
     conn.close();
   }

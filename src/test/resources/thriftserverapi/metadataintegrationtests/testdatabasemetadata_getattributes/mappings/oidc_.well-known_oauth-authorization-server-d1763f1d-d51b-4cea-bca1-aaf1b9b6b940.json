@@ -1,0 +1,23 @@
+{
+  "id" : "d1763f1d-d51b-4cea-bca1-aaf1b9b6b940",
+  "name" : "oidc_.well-known_oauth-authorization-server",
+  "request" : {
+    "url" : "/oidc/.well-known/oauth-authorization-server",
+    "method" : "GET"
+  },
+  "response" : {
+    "status" : 403,
+    "body" : "RBAC: access denied",
+    "headers" : {
+      "date" : "Tue, 17 Feb 2026 21:55:57 GMT",
+      "x-request-id" : "5f51cfdc-dc96-416b-be93-d9cdd2a2a424",
+      "server" : "databricks",
+      "x-databricks-popp-response-code-details" : "rbac_access_denied_matched_policy[databricks-restricted-deny-request]",
+      "content-type" : "text/plain",
+      "server-timing" : "request_id;dur=0;desc=\"5f51cfdc-dc96-416b-be93-d9cdd2a2a424\", client_protocol;dur=0;desc=\"HTTP/1.1\"",
+      "alt-svc" : "h3=\":5443\"; ma=86400, h3-29=\":5443\"; ma=86400"
+    }
+  },
+  "uuid" : "d1763f1d-d51b-4cea-bca1-aaf1b9b6b940",
+  "insertionIndex" : 8
+}

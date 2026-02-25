@@ -278,6 +278,57 @@ public class ExecutionIntegrationTests extends AbstractFakeServiceIntegrationTes
         rs2.unwrap(IDatabricksResultSet.class).getStatementStatus().getState());
   }
 
+  // --- Statement property tests ---
+
+  @Test
+  void testStatement_FetchDirection() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    // Default should be FETCH_FORWARD
+    assertEquals(
+        ResultSet.FETCH_FORWARD,
+        stmt.getFetchDirection(),
+        "Default fetch direction should be FETCH_FORWARD");
+
+    // Setting FETCH_FORWARD should work
+    stmt.setFetchDirection(ResultSet.FETCH_FORWARD);
+    assertEquals(ResultSet.FETCH_FORWARD, stmt.getFetchDirection());
+
+    stmt.close();
+  }
+
+  @Test
+  void testStatement_EnquoteLiteral() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    String result = stmt.enquoteLiteral("test");
+    assertNotNull(result, "enquoteLiteral should return non-null");
+    assertTrue(result.contains("test"), "enquoteLiteral should contain the original string");
+
+    stmt.close();
+  }
+
+  @Test
+  void testStatement_EnquoteIdentifier() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    String result = stmt.enquoteIdentifier("my_column", false);
+    assertNotNull(result, "enquoteIdentifier should return non-null");
+
+    stmt.close();
+  }
+
+  @Test
+  void testStatement_IsSimpleIdentifier() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    assertTrue(stmt.isSimpleIdentifier("simple_name"), "simple_name should be a simple identifier");
+    assertFalse(
+        stmt.isSimpleIdentifier("has space"), "'has space' should not be a simple identifier");
+
+    stmt.close();
+  }
+
   // --- Statement lifecycle and property tests ---
 
   @Test

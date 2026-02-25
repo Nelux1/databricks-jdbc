@@ -1,0 +1,26 @@
+{
+  "id" : "4ca35882-1cf6-4550-bb08-8e8e6c9fb177",
+  "name" : "sql_protocolv1_o_6051921418418893_0819-204509-hill72",
+  "request" : {
+    "url" : "/sql/protocolv1/o/6051921418418893/0819-204509-hill72",
+    "method" : "POST",
+    "bodyPatterns" : [ {
+      "binaryEqualTo" : "gAEAAQAAAAtPcGVuU2Vzc2lvbgAAAAEMAAEIAAH////5DQAECwsAAAAACgUCAAAAAAAApQkMBQQLAAEAAAAFU1BBUksLAAIAAAAHZGVmYXVsdAACBQUBAAA="
+    } ]
+  },
+  "response" : {
+    "status" : 403,
+    "body" : "RBAC: access denied",
+    "headers" : {
+      "date" : "Tue, 17 Feb 2026 21:56:01 GMT",
+      "x-request-id" : "b14ddbf9-d5b2-4dd8-a575-aac468b1f9e6",
+      "server" : "databricks",
+      "x-databricks-popp-response-code-details" : "rbac_access_denied_matched_policy[databricks-restricted-deny-request]",
+      "content-type" : "text/plain",
+      "server-timing" : "request_id;dur=0;desc=\"b14ddbf9-d5b2-4dd8-a575-aac468b1f9e6\", client_protocol;dur=0;desc=\"HTTP/1.1\"",
+      "alt-svc" : "h3=\":5443\"; ma=86400, h3-29=\":5443\"; ma=86400"
+    }
+  },
+  "uuid" : "4ca35882-1cf6-4550-bb08-8e8e6c9fb177",
+  "insertionIndex" : 10
+}

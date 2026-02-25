@@ -289,6 +289,141 @@ public class PreparedStatementIntegrationTests extends AbstractFakeServiceIntegr
     deleteTable(connection, tableName);
   }
 
+  // --- PreparedStatement type setter tests ---
+
+  @Test
+  void testSetBoolean() throws SQLException {
+    String tableName = "pstmt_set_boolean_table";
+    String createSQL =
+        "CREATE TABLE " + getFullyQualifiedTableName(tableName) + " (id INT, flag BOOLEAN)";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, flag) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setBoolean(2, true);
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT flag FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    assertTrue(rs.getBoolean("flag"), "Boolean value should be true");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
+  @Test
+  void testSetLong() throws SQLException {
+    String tableName = "pstmt_set_long_table";
+    String createSQL =
+        "CREATE TABLE " + getFullyQualifiedTableName(tableName) + " (id INT, big_val BIGINT)";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, big_val) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setLong(2, 9876543210L);
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT big_val FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    assertEquals(9876543210L, rs.getLong("big_val"), "Long value should match");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
+  @Test
+  void testSetFloat() throws SQLException {
+    String tableName = "pstmt_set_float_table";
+    String createSQL =
+        "CREATE TABLE " + getFullyQualifiedTableName(tableName) + " (id INT, float_val FLOAT)";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, float_val) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setFloat(2, 3.14f);
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT float_val FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    assertEquals(3.14f, rs.getFloat("float_val"), 0.01f, "Float value should match");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
+  @Test
+  void testSetDouble() throws SQLException {
+    String tableName = "pstmt_set_double_table";
+    String createSQL =
+        "CREATE TABLE " + getFullyQualifiedTableName(tableName) + " (id INT, dbl_val DOUBLE)";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, dbl_val) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setDouble(2, 2.718281828);
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT dbl_val FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    assertEquals(2.718281828, rs.getDouble("dbl_val"), 0.0001, "Double value should match");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
+  @Test
+  void testSetBigDecimal() throws SQLException {
+    String tableName = "pstmt_set_bigdecimal_table";
+    String createSQL =
+        "CREATE TABLE "
+            + getFullyQualifiedTableName(tableName)
+            + " (id INT, dec_val DECIMAL(15, 4))";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, dec_val) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setBigDecimal(2, new BigDecimal("12345.6789"));
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT dec_val FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    assertEquals(
+        new BigDecimal("12345.6789"), rs.getBigDecimal("dec_val"), "BigDecimal value should match");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
   // --- PreparedStatement enhancement tests ---
 
   @Test
@@ -345,6 +480,62 @@ public class PreparedStatementIntegrationTests extends AbstractFakeServiceIntegr
     assertTrue(rs.next(), "Should have one row");
     rs.getInt("value");
     assertTrue(rs.wasNull(), "value should be null");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
+  @Test
+  void testSetDate() throws SQLException {
+    String tableName = "pstmt_set_date_table";
+    String createSQL =
+        "CREATE TABLE " + getFullyQualifiedTableName(tableName) + " (id INT, date_val DATE)";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    Date testDate = Date.valueOf("2024-06-15");
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, date_val) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setDate(2, testDate);
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT date_val FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    assertEquals(testDate, rs.getDate("date_val"), "Date value should match");
+
+    rs.close();
+    deleteTable(connection, tableName);
+  }
+
+  @Test
+  void testSetTimestamp() throws SQLException {
+    String tableName = "pstmt_set_timestamp_table";
+    String createSQL =
+        "CREATE TABLE " + getFullyQualifiedTableName(tableName) + " (id INT, ts_val TIMESTAMP)";
+    setupDatabaseTable(connection, tableName, createSQL);
+
+    Timestamp testTs = Timestamp.valueOf("2024-06-15 10:30:00");
+    String insertSQL =
+        "INSERT INTO " + getFullyQualifiedTableName(tableName) + " (id, ts_val) VALUES (?, ?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(insertSQL)) {
+      pstmt.setInt(1, 1);
+      pstmt.setTimestamp(2, testTs);
+      assertEquals(1, pstmt.executeUpdate());
+    }
+
+    ResultSet rs =
+        executeQuery(
+            connection,
+            "SELECT ts_val FROM " + getFullyQualifiedTableName(tableName) + " WHERE id = 1");
+    assertTrue(rs.next());
+    Timestamp retrieved = rs.getTimestamp("ts_val");
+    assertNotNull(retrieved, "Timestamp should not be null");
+    assertEquals(testTs, retrieved, "Timestamp value should match");
 
     rs.close();
     deleteTable(connection, tableName);
