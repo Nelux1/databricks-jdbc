@@ -31,7 +31,8 @@ import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.client.thrift.generated.TFetchResultsResp;
 import com.databricks.jdbc.model.core.*;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
-import com.databricks.jdbc.telemetry.TelemetryHelper;
+import com.databricks.jdbc.telemetry.latency.TelemetryCollector;
+import com.databricks.jdbc.telemetry.latency.TelemetryCollectorManager;
 import com.databricks.sdk.support.ToStringer;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.InputStream;
@@ -77,6 +78,11 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
 
   private boolean complexDatatypeSupport = false;
 
+  // Cached telemetry collector resolved once at construction time to avoid
+  // per-row overhead in next(). The connection-to-collector mapping is stable
+  // for the lifetime of a result set.
+  private final TelemetryCollector cachedTelemetryCollector;
+
   // Constructor for SEA result set
   public DatabricksResultSet(
       StatementStatus statementStatus,
@@ -116,6 +122,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = parentStatement;
+    this.cachedTelemetryCollector = resolveTelemetryCollector(parentStatement);
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -137,6 +144,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.updateCount = null;
     this.parentStatement = parentStatement;
     this.connectionContext = null;
+    this.cachedTelemetryCollector = resolveTelemetryCollector(parentStatement);
     this.isClosed = false;
     this.wasNull = false;
     this.complexDatatypeSupport = complexDatatypeSupport;
@@ -184,6 +192,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.statementType = statementType;
     this.updateCount = null;
     this.parentStatement = parentStatement;
+    this.cachedTelemetryCollector = resolveTelemetryCollector(parentStatement);
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -215,6 +224,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.updateCount = null;
     this.parentStatement = null;
     this.connectionContext = null;
+    this.cachedTelemetryCollector = null;
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -246,6 +256,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.updateCount = null;
     this.parentStatement = null;
     this.connectionContext = null;
+    this.cachedTelemetryCollector = null;
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -266,6 +277,7 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     this.updateCount = null;
     this.parentStatement = null;
     this.connectionContext = null;
+    this.cachedTelemetryCollector = null;
     this.isClosed = false;
     this.wasNull = false;
   }
@@ -274,11 +286,10 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
   public boolean next() throws SQLException {
     checkIfClosed();
     boolean hasNext = this.executionResult.next();
-    TelemetryHelper.recordResultSetIteration(
-        connectionContext,
-        statementId.toSQLExecStatementId(),
-        resultSetMetaData.getChunkCount(),
-        hasNext);
+    if (cachedTelemetryCollector != null) {
+      cachedTelemetryCollector.recordResultSetIteration(
+          statementId.toSQLExecStatementId(), resultSetMetaData.getChunkCount(), hasNext);
+    }
     return hasNext;
   }
 
@@ -289,6 +300,23 @@ public class DatabricksResultSet implements IDatabricksResultSet, IDatabricksRes
     if (parentStatement != null) {
       parentStatement.handleResultSetClose(this);
     }
+  }
+
+  private static TelemetryCollector resolveTelemetryCollector(
+      IDatabricksStatementInternal parentStatement) {
+    try {
+      if (parentStatement != null) {
+        IDatabricksConnectionContext connectionContext =
+            ((DatabricksConnection) parentStatement.getStatement().getConnection())
+                .getConnectionContext();
+        if (connectionContext != null) {
+          return TelemetryCollectorManager.getInstance().getOrCreateCollector(connectionContext);
+        }
+      }
+    } catch (Exception e) {
+      LOGGER.trace("Error resolving telemetry collector: {}", e.getMessage());
+    }
+    return null;
   }
 
   @Override
