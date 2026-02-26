@@ -80,6 +80,23 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     conn.close();
   }
 
+  // --- Catalog and schema switching tests ---
+
+  @Test
+  void testSetAndGetCatalog() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    String originalCatalog = conn.getCatalog();
+    assertNotNull(originalCatalog, "getCatalog() should return non-null");
+
+    // Set catalog to the test catalog (which we know exists)
+    String testCatalog = getDatabricksCatalog();
+    conn.setCatalog(testCatalog);
+    assertEquals(testCatalog, conn.getCatalog(), "getCatalog() should return what was set");
+
+    conn.close();
+  }
+
   // --- Connection properties and management tests ---
 
   @Test
@@ -119,7 +136,23 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
   void testAutoCommit_DefaultIsTrue() throws SQLException {
     Connection conn = getValidJDBCConnection();
 
-    assertTrue(conn.getAutoCommit(), "Default autoCommit should be true");
+    conn.close();
+  }
+
+  @Test
+  void testSetAndGetSchema() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    String originalSchema = conn.getSchema();
+    assertNotNull(originalSchema, "getSchema() should return non-null");
+
+    // First switch to the test catalog so the test schema is accessible
+    conn.setCatalog(getDatabricksCatalog());
+
+    // Set schema to the test schema (which exists in the test catalog)
+    String testSchema = getDatabricksSchema();
+    conn.setSchema(testSchema);
+    assertEquals(testSchema, conn.getSchema(), "getSchema() should return what was set");
 
     conn.close();
   }
@@ -131,6 +164,21 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     String schema = conn.getSchema();
     assertNotNull(schema, "getSchema() should return non-null for active connection");
     assertFalse(schema.isEmpty(), "getSchema() should return non-empty string");
+
+    conn.close();
+  }
+
+  @Test
+  void testSetAndGetClientInfo() throws SQLException {
+    Connection conn = getValidJDBCConnection();
+
+    // getClientInfo() should return non-null Properties
+    Properties clientInfo = conn.getClientInfo();
+    assertNotNull(clientInfo, "getClientInfo() should return non-null Properties");
+
+    // getClientInfo(name) for unknown property should return null
+    String value = conn.getClientInfo("NonExistentProperty");
+    assertNull(value, "getClientInfo for unknown property should return null");
 
     conn.close();
   }

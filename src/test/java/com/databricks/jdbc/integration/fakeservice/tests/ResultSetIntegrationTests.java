@@ -167,6 +167,91 @@ public class ResultSetIntegrationTests extends AbstractFakeServiceIntegrationTes
     deleteTable(connection, tableName);
   }
 
+  // --- ResultSet property and navigation tests ---
+
+  @Test
+  void testFindColumn() throws SQLException {
+    Statement stmt = connection.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT 42 AS my_col, 'hello' AS another_col");
+
+    assertTrue(rs.next());
+    assertEquals(1, rs.findColumn("my_col"), "findColumn should return 1 for first column");
+    assertEquals(2, rs.findColumn("another_col"), "findColumn should return 2 for second column");
+
+    rs.close();
+    stmt.close();
+  }
+
+  @Test
+  void testGetHoldability() throws SQLException {
+    Statement stmt = connection.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT 1 AS val");
+
+    assertTrue(rs.next());
+    int holdability = rs.getHoldability();
+    assertTrue(
+        holdability == ResultSet.HOLD_CURSORS_OVER_COMMIT
+            || holdability == ResultSet.CLOSE_CURSORS_AT_COMMIT,
+        "Holdability should be a valid JDBC constant");
+
+    rs.close();
+    stmt.close();
+  }
+
+  @Test
+  void testResultSet_GetWarningsAndClearWarnings() throws SQLException {
+    Statement stmt = connection.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT 1 AS val");
+
+    assertTrue(rs.next());
+    // getWarnings should not throw (may return null if no warnings)
+    SQLWarning warning = rs.getWarnings();
+    // clearWarnings should not throw
+    rs.clearWarnings();
+    assertNull(rs.getWarnings(), "After clearWarnings, getWarnings should return null");
+
+    rs.close();
+    stmt.close();
+  }
+
+  // --- ResultSetMetaData additional tests ---
+
+  @Test
+  void testResultSetMetaData_GetTableName() throws SQLException {
+    Statement stmt = connection.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT 42 AS id, 'test' AS name");
+
+    assertNotNull(rs);
+    ResultSetMetaData rsmd = rs.getMetaData();
+
+    // getTableName returns null in this driver (server does not return table name metadata)
+    String tblName = rsmd.getTableName(1);
+    assertNull(tblName, "getTableName should return null (not populated by server)");
+
+    rs.close();
+    stmt.close();
+  }
+
+  @Test
+  void testResultSetMetaData_GetSchemaAndCatalogName() throws SQLException {
+    Statement stmt = connection.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT 42 AS id, 'test' AS name");
+
+    assertNotNull(rs);
+    ResultSetMetaData rsmd = rs.getMetaData();
+
+    // getSchemaName returns null (server does not return schema name metadata)
+    String schemaName = rsmd.getSchemaName(1);
+    assertNull(schemaName, "getSchemaName should return null (not populated by server)");
+
+    // getCatalogName returns empty string
+    String catalogName = rsmd.getCatalogName(1);
+    assertNotNull(catalogName, "getCatalogName should return non-null");
+
+    rs.close();
+    stmt.close();
+  }
+
   // --- ResultSet getter method tests ---
 
   @Test

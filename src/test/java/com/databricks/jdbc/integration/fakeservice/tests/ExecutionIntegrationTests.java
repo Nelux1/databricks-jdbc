@@ -281,6 +281,48 @@ public class ExecutionIntegrationTests extends AbstractFakeServiceIntegrationTes
   // --- Statement property tests ---
 
   @Test
+  void testStatement_FetchSize() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    // Default fetch size should be 0 (driver does not support custom fetch size)
+    assertEquals(0, stmt.getFetchSize(), "Default fetch size should be 0");
+
+    // setFetchSize is a no-op in this driver (logs a warning but doesn't change the value)
+    stmt.setFetchSize(100);
+    assertEquals(
+        0, stmt.getFetchSize(), "getFetchSize should still return 0 (fetch size not supported)");
+
+    // Verify a warning was generated
+    assertNotNull(stmt.getWarnings(), "setFetchSize should generate a warning");
+
+    stmt.close();
+  }
+
+  @Test
+  void testStatement_GetResultSetType() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    int rsType = stmt.getResultSetType();
+    assertEquals(
+        ResultSet.TYPE_FORWARD_ONLY, rsType, "Default ResultSet type should be TYPE_FORWARD_ONLY");
+
+    stmt.close();
+  }
+
+  @Test
+  void testStatement_GetResultSetConcurrency() throws SQLException {
+    Statement stmt = connection.createStatement();
+
+    int rsConcurrency = stmt.getResultSetConcurrency();
+    assertEquals(
+        ResultSet.CONCUR_READ_ONLY,
+        rsConcurrency,
+        "Default ResultSet concurrency should be CONCUR_READ_ONLY");
+
+    stmt.close();
+  }
+
+  @Test
   void testStatement_FetchDirection() throws SQLException {
     Statement stmt = connection.createStatement();
 
