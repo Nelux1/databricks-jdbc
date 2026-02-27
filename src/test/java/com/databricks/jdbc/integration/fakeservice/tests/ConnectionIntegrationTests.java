@@ -3,10 +3,13 @@ package com.databricks.jdbc.integration.fakeservice.tests;
 import static com.databricks.jdbc.integration.IntegrationTestUtil.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.databricks.jdbc.api.impl.DatabricksConnection;
+import com.databricks.jdbc.common.DatabricksClientType;
 import com.databricks.jdbc.common.DatabricksJdbcUrlParams;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import com.databricks.jdbc.integration.fakeservice.AbstractFakeServiceIntegrationTests;
 import com.databricks.jdbc.integration.fakeservice.FakeServiceConfigLoader;
+import com.databricks.jdbc.integration.fakeservice.FakeServiceExtension;
 import java.sql.*;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
@@ -94,7 +97,7 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     conn.setCatalog(testCatalog);
     assertEquals(testCatalog, conn.getCatalog(), "getCatalog() should return what was set");
 
-    conn.close();
+    safeClose(conn);
   }
 
   // --- Connection properties and management tests ---
@@ -154,7 +157,7 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
     conn.setSchema(testSchema);
     assertEquals(testSchema, conn.getSchema(), "getSchema() should return what was set");
 
-    conn.close();
+    safeClose(conn);
   }
 
   @Test
@@ -242,6 +245,23 @@ public class ConnectionIntegrationTests extends AbstractFakeServiceIntegrationTe
         "Transaction isolation should be a valid JDBC constant");
 
     conn.close();
+  }
+
+  /**
+   * Closes the connection, but skips the close in Thrift REPLAY mode due to WireMock stub matching
+   * issues with CloseOperation/CloseSession binary bodies.
+   */
+  private void safeClose(Connection conn) throws SQLException {
+    if (conn != null) {
+      if (((DatabricksConnection) conn).getConnectionContext().getClientType()
+              == DatabricksClientType.THRIFT
+          && getFakeServiceMode() == FakeServiceExtension.FakeServiceMode.REPLAY) {
+        // Hacky fix
+        // Wiremock has error in stub matching for close operation in THRIFT + REPLAY mode
+      } else {
+        conn.close();
+      }
+    }
   }
 
   private Properties createConnectionProperties(Properties extraProps) {
