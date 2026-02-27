@@ -887,7 +887,8 @@ public class DatabricksStatement implements IDatabricksStatement, IDatabricksSta
         params,
         statementType,
         connection.getSession(),
-        this);
+        this,
+        null /* metadataOperationType */);
   }
 
   void checkIfClosed() throws DatabricksSQLException {
