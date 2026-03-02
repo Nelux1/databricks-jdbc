@@ -3,6 +3,7 @@ package org.apache.arrow.memory;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -187,10 +188,55 @@ public class DatabricksArrowPatchTest {
         for (String key : patchedRecord.keySet()) {
           Object patchedColumn = patchedRecord.get(key);
           Object rootColumn = rootRecord.get(key);
-          assertEquals(rootColumn, patchedColumn, "Column " + key + " should be same");
+          assertTrue(
+              deepEquals(rootColumn, patchedColumn),
+              "Column " + key + " should be same at row " + i);
         }
       }
     }
+  }
+
+  /**
+   * Deep equality check that handles byte[] (which uses reference equality by default) and
+   * recursively checks Lists and Maps that may contain byte[] values (e.g., struct or map columns
+   * with binary fields).
+   */
+  @SuppressWarnings("unchecked")
+  private boolean deepEquals(Object a, Object b) {
+    if (a == b) return true;
+    if (a == null || b == null) return false;
+    if (a instanceof byte[] && b instanceof byte[]) {
+      return Arrays.equals((byte[]) a, (byte[]) b);
+    }
+    if (a instanceof List && b instanceof List) {
+      List<Object> listA = (List<Object>) a;
+      List<Object> listB = (List<Object>) b;
+      if (listA.size() != listB.size()) return false;
+      for (int i = 0; i < listA.size(); i++) {
+        if (!deepEquals(listA.get(i), listB.get(i))) return false;
+      }
+      return true;
+    }
+    if (a instanceof Map && b instanceof Map) {
+      Map<Object, Object> mapA = (Map<Object, Object>) a;
+      Map<Object, Object> mapB = (Map<Object, Object>) b;
+      if (mapA.size() != mapB.size()) return false;
+      for (Map.Entry<Object, Object> entry : mapA.entrySet()) {
+        // For binary map keys, we need to find a matching key in mapB
+        Object matchedValue = null;
+        boolean found = false;
+        for (Map.Entry<Object, Object> entryB : mapB.entrySet()) {
+          if (deepEquals(entry.getKey(), entryB.getKey())) {
+            matchedValue = entryB.getValue();
+            found = true;
+            break;
+          }
+        }
+        if (!found || !deepEquals(entry.getValue(), matchedValue)) return false;
+      }
+      return true;
+    }
+    return a.equals(b);
   }
 
   /** Parse the Arrow stream file stored at {@code filePath} and return the records in the file. */
