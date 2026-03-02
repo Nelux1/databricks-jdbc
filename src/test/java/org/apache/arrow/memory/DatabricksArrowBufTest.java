@@ -32,7 +32,6 @@ public class DatabricksArrowBufTest {
   private static final Logger logger = LoggerFactory.getLogger(DatabricksArrowBufTest.class);
 
   /** Test the constructor fails on invalid capacity arguments. */
-  @SuppressWarnings("resource")
   @Test
   public void testConstructorFailsOnInvalidCapacity() {
     final int bufferSize = 32;
@@ -42,7 +41,12 @@ public class DatabricksArrowBufTest {
     // Should fail when capacity is exceeded.
     assertThrows(
         IllegalArgumentException.class,
-        () -> new DatabricksArrowBuf(refManager, null, Integer.MAX_VALUE + 1L),
+        () -> {
+          try (DatabricksArrowBuf arrowBuf =
+              new DatabricksArrowBuf(refManager, null, Integer.MAX_VALUE + 1L)) {
+            logger.info("Should not reach here. {}", arrowBuf);
+          }
+        },
         "Constructor should fail when capacity is greater than Integer.MAX_VALUE");
   }
 
