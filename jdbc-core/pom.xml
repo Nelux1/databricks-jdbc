@@ -435,6 +435,9 @@
             <exclude>org/apache/arrow/memory/util/MemoryUtil*</exclude>
             <exclude>org/apache/arrow/memory/ArrowBuf*</exclude>
             <exclude>org/apache/arrow/vector/util/DecimalUtility*</exclude>
+
+            <!-- Exclude DatabricksArrowBuf. We test only read paths -->
+            <exclude>**/DatabricksArrowBuf*</exclude>
           </excludes>
         </configuration>
       </plugin>
