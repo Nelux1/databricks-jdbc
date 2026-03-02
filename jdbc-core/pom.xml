@@ -451,7 +451,7 @@
             <artifactId>maven-surefire-plugin</artifactId>
             <configuration>
               <argLine>
-                @{argLine} -Xmx100m -Darrow.memory.debug.allocator=true
+                @{argLine} -Xmx100m
               </argLine>
             </configuration>
           </plugin>
