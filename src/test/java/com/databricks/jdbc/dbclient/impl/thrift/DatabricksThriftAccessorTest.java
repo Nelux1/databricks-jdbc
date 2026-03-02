@@ -896,10 +896,11 @@ public class DatabricksThriftAccessorTest {
   @Test
   void testTimedOutStateInDirectResultsThrowsTimeoutException()
       throws TException, SQLException, DatabricksValidationException {
-    // Reproduces the interactive cluster Case B: server enforces query timeout and returns
-    // TIMEDOUT_STATE directly in directResults before the client polling loop starts.
-    // Previously isErrorOperationState excluded TIMEDOUT_STATE, causing the driver to fall
-    // through to executeFetchRequest and throw DatabricksHttpException instead.
+    // Reproduces the interactive cluster scenario: server enforces queryTimeout and returns
+    // TIMEDOUT_STATE directly in directResults before the client polling loop starts (e.g. query
+    // is queued under load and times out while waiting). Previously isErrorOperationState excluded
+    // TIMEDOUT_STATE, causing the driver to fall through to executeFetchRequest and throw
+    // DatabricksHttpException instead.
     setup(true);
 
     TExecuteStatementReq request = new TExecuteStatementReq();
