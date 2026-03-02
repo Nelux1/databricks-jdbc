@@ -35,6 +35,8 @@ public enum DatabricksJdbcUrlParams {
   OAUTH_REFRESH_TOKEN("Auth_RefreshToken", "OAuth2 Refresh Token"),
   OAUTH_REFRESH_TOKEN_2("OAuthRefreshToken", "OAuth2 Refresh Token"), // Same as OAUTH_REFRESH_TOKEN
   OAUTH_REDIRECT_URL_PORT("OAuth2RedirectUrlPort", "OAuth2 Redirect URL port", "8020"),
+  OAUTH_WEB_SERVER_TIMEOUT(
+      "OAuthWebServerTimeout", "OAuth browser authentication timeout in seconds", "120"),
   PWD("pwd", "Password (used when AUTH_MECH = 3)", true),
   POLL_INTERVAL("asyncexecpollinterval", "Async execution poll interval", "200"),
   HTTP_PATH("httppath", "HTTP path", true),
@@ -150,6 +152,8 @@ public enum DatabricksJdbcUrlParams {
   FORCE_ENABLE_TELEMETRY("ForceEnableTelemetry", "Force enable telemetry", "0"),
   TELEMETRY_FLUSH_INTERVAL(
       "TelemetryFlushInterval", "Flush interval in milliseconds", "300000"), // 5 MINUTES
+  TELEMETRY_SOCKET_TIMEOUT(
+      "TelemetrySocketTimeout", "Socket timeout in seconds for telemetry HTTP client", "5"),
   MAX_CONCURRENT_PRESIGNED_REQUESTS(
       "MaxVolumeOperationConcurrentPresignedRequests",
       "Maximum number of concurrent presigned requests",
@@ -211,7 +215,11 @@ public enum DatabricksJdbcUrlParams {
       "Comma-separated list of HTTP status codes that should be retried irrespective of Retry-After header.",
       ""),
   API_RETRY_TIMEOUT(
-      "ApiRetryTimeout", "Timeout for retrying API retriable codes in seconds", "300");
+      "ApiRetryTimeout", "Timeout for retrying API retriable codes in seconds", "300"),
+  NON_ROWCOUNT_QUERY_PREFIXES(
+      "NonRowcountQueryPrefixes",
+      "Comma-separated list of query prefixes (like INSERT,UPDATE,DELETE) that should return result sets instead of row counts",
+      "");
 
   private final String paramName;
   private final String defaultValue;

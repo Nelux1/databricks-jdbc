@@ -2,13 +2,16 @@ package com.databricks.jdbc.api.impl.arrow;
 
 import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.channels.Channels;
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.DatabricksBufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VarCharVector;
@@ -19,7 +22,10 @@ import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +41,26 @@ public class ArrowBufferAllocatorTest {
       assertInstanceOf(RootAllocator.class, allocator, "Should create RootAllocator");
       readAndWriteArrowData(allocator);
     }
+
+    assertFalse(ArrowBufferAllocator.isUsingPatchedAllocator(), "Should use RootAllocator");
+  }
+
+  /**
+   * Test that the fallback {@code DatabricksBufferAllocator} is used when the creation of {@code
+   * RootAllocator} is not possible in the current JVM.
+   */
+  @Test
+  @Tag("Jvm17PlusAndArrowToNioReflectionDisabled")
+  @EnabledOnJre({JRE.JAVA_17, JRE.JAVA_21})
+  public void testCreateDatabricksBufferAllocator() throws IOException {
+    try (BufferAllocator allocator = ArrowBufferAllocator.getBufferAllocator()) {
+      assertInstanceOf(
+          DatabricksBufferAllocator.class, allocator, "Should create DatabricksBufferAllocator");
+      readAndWriteArrowData(allocator);
+    }
+
+    assertTrue(
+        ArrowBufferAllocator.isUsingPatchedAllocator(), "Should use DatabricksBufferAllocator");
   }
 
   /** Write and read a sample arrow data to validate that the BufferAllocator works. */
