@@ -72,7 +72,7 @@ public class DatabricksThriftServiceClientTest {
   }
 
   @Test
-  void testCreateSession() throws DatabricksSQLException {
+  void testCreateSession() throws SQLException {
     when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(true);
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
@@ -94,7 +94,7 @@ public class DatabricksThriftServiceClientTest {
   }
 
   @Test
-  void testCreateSessionHandlesProtocolVersion() throws DatabricksSQLException {
+  void testCreateSessionHandlesProtocolVersion() throws SQLException {
     when(connectionContext.getEnableMultipleCatalogSupport()).thenReturn(true);
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
@@ -145,7 +145,7 @@ public class DatabricksThriftServiceClientTest {
   }
 
   @Test
-  void testCloseSession() throws DatabricksSQLException {
+  void testCloseSession() throws SQLException {
     DatabricksThriftServiceClient client =
         new DatabricksThriftServiceClient(thriftAccessor, connectionContext);
     TCloseSessionReq closeSessionReq = new TCloseSessionReq().setSessionHandle(SESSION_HANDLE);
@@ -192,7 +192,8 @@ public class DatabricksThriftServiceClientTest {
           Collections.emptyMap(),
           StatementType.SQL,
           session,
-          parentStatement);
+          parentStatement,
+          null);
     } catch (Exception e) {
       // expect this to throw since thriftAccessor is mocked
       // only interested in capturing the request
@@ -290,7 +291,8 @@ public class DatabricksThriftServiceClientTest {
             Collections.emptyMap(),
             StatementType.SQL,
             session,
-            parentStatement);
+            parentStatement,
+            null);
     assertEquals(resultSet, actualResultSet);
   }
 
@@ -332,7 +334,8 @@ public class DatabricksThriftServiceClientTest {
             Collections.emptyMap(),
             StatementType.SQL,
             session,
-            parentStatement);
+            parentStatement,
+            null);
     assertEquals(resultSet, actualResultSet);
   }
 
@@ -744,7 +747,13 @@ public class DatabricksThriftServiceClientTest {
         .thenReturn(resultSet);
 
     client.executeStatement(
-        TEST_STRING, CLUSTER_COMPUTE, Collections.emptyMap(), StatementType.SQL, session, null);
+        TEST_STRING,
+        CLUSTER_COMPUTE,
+        Collections.emptyMap(),
+        StatementType.SQL,
+        session,
+        null,
+        null);
 
     ArgumentCaptor<TExecuteStatementReq> requestCaptor =
         ArgumentCaptor.forClass(TExecuteStatementReq.class);
@@ -777,7 +786,8 @@ public class DatabricksThriftServiceClientTest {
         Collections.emptyMap(),
         StatementType.SQL,
         session,
-        parentStatement);
+        parentStatement,
+        null);
 
     ArgumentCaptor<TExecuteStatementReq> requestCaptor =
         ArgumentCaptor.forClass(TExecuteStatementReq.class);
