@@ -7,6 +7,7 @@
 
 ### Updated
 - Fat jar now routes SDK and Apache HTTP client logs through Java Util Logging (JUL), removing the need for external logging libraries.
+- PECOBLR-1121 Arrow patch to circumvent Arrow issues with JDK 16+.
 
 ### Fixed
 - Fixed `rollback()` to throw `SQLException` when called in auto-commit mode (no active transaction), aligning with JDBC spec. Previously it silently sent a ROLLBACK command to the server.
