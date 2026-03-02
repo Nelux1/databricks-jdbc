@@ -20,7 +20,7 @@
 // This file was modified by Databricks, Inc on 16-December-2025.
 // Description of changes:
 //        - Patched ArrowBuf to be non-final and extensible.
-//        - Patched ArrowBuf to remove dependency on BaseAllocator.
+//        - Patched ArrowBuf to remove dependency on BaseAllocator during static initialization.
 //        - Patched ArrowBuf to modify method visibility from public to private for
 //           `print(StringBuilder sb, int indent, Verbosity verbosity)`
 // -------------------------------------------------------------------------
