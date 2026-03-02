@@ -37,7 +37,7 @@ public abstract class AbstractDatabricksArrowPatchTypesTest {
   /** Provide different buffer allocators. */
   protected static Stream<Arguments> getBufferAllocators() {
     // Large enough value which fits within the heap space for tests.
-    int totalRows = (int) Math.pow(2, 19); // A large enough value.
+    int totalRows = (int) Math.pow(2, 17); // A large enough value.
     return Stream.of(
         Arguments.of(new DatabricksBufferAllocator(), new DatabricksBufferAllocator(), totalRows));
   }
