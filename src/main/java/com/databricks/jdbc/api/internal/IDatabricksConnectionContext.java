@@ -179,6 +179,8 @@ public interface IDatabricksConnectionContext {
 
   int getIdleHttpConnectionExpiry();
 
+  List<String> getNonRowcountQueryPrefixes();
+
   boolean supportManyParameters();
 
   String getConnectionURL();
@@ -231,6 +233,9 @@ public interface IDatabricksConnectionContext {
 
   /** Returns the list of OAuth2 redirect URL ports used for OAuth authentication. */
   List<Integer> getOAuth2RedirectUrlPorts();
+
+  /** Returns the OAuth browser authentication timeout in seconds for U2M authentication. */
+  int getOAuthWebServerTimeout();
 
   String getGcpAuthType() throws DatabricksParsingException;
 
@@ -328,6 +333,9 @@ public interface IDatabricksConnectionContext {
 
   /** Returns the socket timeout in seconds for HTTP connections. */
   int getSocketTimeout();
+
+  /** Returns the socket timeout in seconds for the telemetry HTTP client. */
+  int getTelemetrySocketTimeout();
 
   /**
    * Returns whether self-signed certificates are allowed for SSL connections.
