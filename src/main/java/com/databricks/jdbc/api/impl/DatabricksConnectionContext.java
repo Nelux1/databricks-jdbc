@@ -810,6 +810,12 @@ public class DatabricksConnectionContext implements IDatabricksConnectionContext
     }
   }
 
+  /** {@inheritDoc} */
+  @Override
+  public int getOAuthWebServerTimeout() {
+    return Integer.parseInt(getParameter(DatabricksJdbcUrlParams.OAUTH_WEB_SERVER_TIMEOUT));
+  }
+
   @Override
   public Boolean getUseEmptyMetadata() {
     String param = getParameter(DatabricksJdbcUrlParams.USE_EMPTY_METADATA);
@@ -1029,6 +1035,12 @@ public class DatabricksConnectionContext implements IDatabricksConnectionContext
     return Integer.parseInt(getParameter(DatabricksJdbcUrlParams.SOCKET_TIMEOUT));
   }
 
+  /** {@inheritDoc} */
+  @Override
+  public int getTelemetrySocketTimeout() {
+    return Integer.parseInt(getParameter(DatabricksJdbcUrlParams.TELEMETRY_SOCKET_TIMEOUT));
+  }
+
   @Override
   public String getTokenCachePassPhrase() {
     return getParameter(DatabricksJdbcUrlParams.TOKEN_CACHE_PASS_PHRASE);
@@ -1160,6 +1172,16 @@ public class DatabricksConnectionContext implements IDatabricksConnectionContext
   @Override
   public boolean isBatchedInsertsEnabled() {
     return getParameter(DatabricksJdbcUrlParams.ENABLE_BATCHED_INSERTS).equals("1");
+  }
+
+  @Override
+  public List<String> getNonRowcountQueryPrefixes() {
+    String prefixesStr = getParameter(DatabricksJdbcUrlParams.NON_ROWCOUNT_QUERY_PREFIXES);
+    return Arrays.stream(prefixesStr.split(","))
+        .map(String::trim)
+        .map(String::toUpperCase)
+        .filter(s -> !s.isEmpty())
+        .collect(Collectors.toList());
   }
 
   @Override
