@@ -34,7 +34,7 @@ public class OAuthRefreshCredentialsProvider implements TokenSource, Credentials
   private final String tokenEndpoint;
   private final String clientId;
   private final String clientSecret;
-  private final Token token;
+  private volatile Token token;
   private CachedTokenSource cachedTokenSource;
 
   public OAuthRefreshCredentialsProvider(
@@ -124,6 +124,12 @@ public class OAuthRefreshCredentialsProvider implements TokenSource, Credentials
     Token newToken =
         retrieveToken(
             hc, clientId, clientSecret, tokenEndpoint, params, headers, AuthParameterPosition.BODY);
+
+    // Update stored token so subsequent refreshes use the latest refresh token
+    // (handles OAuth refresh token rotation)
+    if (newToken.getRefreshToken() != null) {
+      this.token = newToken;
+    }
 
     LOGGER.debug("Successfully refreshed OAuth token");
     return newToken;

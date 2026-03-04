@@ -9,6 +9,7 @@
 - Fat jar now routes SDK and Apache HTTP client logs through Java Util Logging (JUL), removing the need for external logging libraries.
 
 ### Fixed
+- Fixed OAuth refresh token rotation: `OAuthRefreshCredentialsProvider` now updates its stored token after each refresh, so that if the server rotates the refresh token, subsequent refreshes use the new one instead of the stale original.
 - Fixed `rollback()` to throw `SQLException` when called in auto-commit mode (no active transaction), aligning with JDBC spec. Previously it silently sent a ROLLBACK command to the server.
 - Fixed `fetchAutoCommitStateFromServer()` to accept both `"1"`/`"0"` and `"true"`/`"false"` responses from `SET AUTOCOMMIT` query, since different server implementations return different formats.
 - Fixed socket leak in SDK HTTP client that prevented CRaC checkpointing. The SDK's connection pool was not shut down on `connection.close()`, leaving TCP sockets open.
