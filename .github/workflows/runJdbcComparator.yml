@@ -4,6 +4,16 @@ on:
   schedule:
     - cron: '0 0 * * 1' # Run at 00:00 UTC on Monday (1)
   workflow_dispatch:    # Allow manual trigger
+    inputs:
+      comparison_mode:
+        description: 'Which comparison pair to run'
+        required: false
+        default: 'thrift-vs-sea'
+        type: choice
+        options:
+          - thrift-vs-sea
+          - simba-vs-sea
+          - all
 
 jobs:
   comparator:
@@ -47,7 +57,7 @@ jobs:
           echo "DATABRICKS_COMPARATOR_TOKEN=${DATABRICKS_COMPARATOR_TOKEN}" >> $GITHUB_ENV
 
       - name: Run Tests
-        run: mvn -pl jdbc-core test -Dtest=JDBCDriverComparisonTest
+        run: mvn -pl jdbc-core test -Dtest=JDBCDriverComparisonTest -DCOMPARATOR_MODE=${{ inputs.comparison_mode || 'thrift-vs-sea' }}
 
       - name: Format Email Content
         run: |

@@ -25,6 +25,9 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class JDBCDriverComparisonTest {
+  private static final String COMPARATOR_MODE =
+      System.getProperty("COMPARATOR_MODE", "thrift-vs-sea");
+
   private static final String OLD_DRIVER_JDBC_URL =
       "jdbc:databricks://benchmarking-prod-aws-us-west-2.cloud.databricks.com:443/default;ssl=1;authMech=3;httpPath=/sql/1.0/warehouses/e3c43f3911e50d7c;UID=token;";
   private static final String OSS_DRIVER_JDBC_URL =
@@ -48,29 +51,25 @@ public class JDBCDriverComparisonTest {
     // Create temporary directory for extracted JARs
     tempDir = Files.createTempDirectory("jdbc-drivers");
 
-    // Extract and load drivers
-    URL oldDriverJarUrl = extractJarToTemp("databricks-jdbc-2.7.6.jar", tempDir);
-
-    if (oldDriverJarUrl == null) {
-      throw new RuntimeException("Unable to find JDBC driver JARs in the classpath");
-    }
-
-    // Initialize class loaders and drivers
-    URLClassLoader oldDriverClassLoader =
-        new CustomClassLoader(
-            new URL[] {oldDriverJarUrl}, JDBCDriverComparisonTest.class.getClassLoader());
-
-    Class<?> oldDriverClass =
-        Class.forName("com.databricks.client.jdbc.Driver", true, oldDriverClassLoader);
-
-    Driver oldDriver = (Driver) oldDriverClass.getDeclaredConstructor().newInstance();
-
     // Initialize connections
     String pwd = System.getenv("DATABRICKS_COMPARATOR_TOKEN");
 
     Properties props = new Properties();
-    // Use the old driver (2.7.6)
-    oldDriverConnection = oldDriver.connect(OLD_DRIVER_JDBC_URL + "PWD=" + pwd, props);
+
+    if (COMPARATOR_MODE.equals("simba-vs-sea") || COMPARATOR_MODE.equals("all")) {
+      // Extract and load old driver (2.7.6)
+      URL oldDriverJarUrl = extractJarToTemp("databricks-jdbc-2.7.6.jar", tempDir);
+      if (oldDriverJarUrl == null) {
+        throw new RuntimeException("Unable to find JDBC driver JARs in the classpath");
+      }
+      URLClassLoader oldDriverClassLoader =
+          new CustomClassLoader(
+              new URL[] {oldDriverJarUrl}, JDBCDriverComparisonTest.class.getClassLoader());
+      Class<?> oldDriverClass =
+          Class.forName("com.databricks.client.jdbc.Driver", true, oldDriverClassLoader);
+      Driver oldDriver = (Driver) oldDriverClass.getDeclaredConstructor().newInstance();
+      oldDriverConnection = oldDriver.connect(OLD_DRIVER_JDBC_URL + "PWD=" + pwd, props);
+    }
 
     // OSS driver with Thrift
     ossThriftConnection = DriverManager.getConnection(OSS_DRIVER_JDBC_URL, "token", pwd);
@@ -82,9 +81,11 @@ public class JDBCDriverComparisonTest {
 
     String queryResultSetTypesTable = "select * from main.tpch_sf100_delta.customer limit 100";
     // Create separate ResultSets for each comparison pair to avoid reuse issues
-    oldDriverResultSet =
-        oldDriverConnection.createStatement().executeQuery(queryResultSetTypesTable);
-    ossSeaResultSet1 = ossSeaConnection.createStatement().executeQuery(queryResultSetTypesTable);
+    if (COMPARATOR_MODE.equals("simba-vs-sea") || COMPARATOR_MODE.equals("all")) {
+      oldDriverResultSet =
+          oldDriverConnection.createStatement().executeQuery(queryResultSetTypesTable);
+      ossSeaResultSet1 = ossSeaConnection.createStatement().executeQuery(queryResultSetTypesTable);
+    }
 
     ossThriftResultSet =
         ossThriftConnection.createStatement().executeQuery(queryResultSetTypesTable);
@@ -120,11 +121,15 @@ public class JDBCDriverComparisonTest {
     List<Arguments> base = baseProvider.collect(Collectors.toList());
     List<Arguments> combined = new ArrayList<>();
 
-    // Define connection pairs
-    Object[][] connectionPairs = {
-      {"Old(2.7.6) vs OSS-SEA", oldDriverConnection, ossSeaConnection},
-      {"OSS-Thrift vs OSS-SEA", ossThriftConnection, ossSeaConnection}
-    };
+    // Define connection pairs based on COMPARATOR_MODE
+    List<Object[]> pairList = new ArrayList<>();
+    if (COMPARATOR_MODE.equals("simba-vs-sea") || COMPARATOR_MODE.equals("all")) {
+      pairList.add(new Object[] {"Old(2.7.6) vs OSS-SEA", oldDriverConnection, ossSeaConnection});
+    }
+    if (COMPARATOR_MODE.equals("thrift-vs-sea") || COMPARATOR_MODE.equals("all")) {
+      pairList.add(new Object[] {"OSS-Thrift vs OSS-SEA", ossThriftConnection, ossSeaConnection});
+    }
+    Object[][] connectionPairs = pairList.toArray(new Object[0][]);
 
     // Combine each pair with each base argument
     for (Object[] pair : connectionPairs) {
@@ -151,11 +156,15 @@ public class JDBCDriverComparisonTest {
     List<Arguments> base = baseProvider.collect(Collectors.toList());
     List<Arguments> combined = new ArrayList<>();
 
-    // Define ResultSet pairs - each with separate instances to avoid reuse
-    Object[][] resultSetPairs = {
-      {"Old(2.7.6) vs OSS-SEA", oldDriverResultSet, ossSeaResultSet1},
-      {"OSS-Thrift vs OSS-SEA", ossThriftResultSet, ossSeaResultSet2}
-    };
+    // Define ResultSet pairs based on COMPARATOR_MODE - each with separate instances to avoid reuse
+    List<Object[]> pairList = new ArrayList<>();
+    if (COMPARATOR_MODE.equals("simba-vs-sea") || COMPARATOR_MODE.equals("all")) {
+      pairList.add(new Object[] {"Old(2.7.6) vs OSS-SEA", oldDriverResultSet, ossSeaResultSet1});
+    }
+    if (COMPARATOR_MODE.equals("thrift-vs-sea") || COMPARATOR_MODE.equals("all")) {
+      pairList.add(new Object[] {"OSS-Thrift vs OSS-SEA", ossThriftResultSet, ossSeaResultSet2});
+    }
+    Object[][] resultSetPairs = pairList.toArray(new Object[0][]);
 
     // Combine each pair with each base argument
     for (Object[] pair : resultSetPairs) {
@@ -174,7 +183,7 @@ public class JDBCDriverComparisonTest {
     return combined.stream();
   }
 
-  @ParameterizedTest
+  @ParameterizedTest(autoCloseArguments = false)
   @MethodSource("provideSQLQueries")
   @DisplayName("Compare SQL Query Results")
   void compareSQLQueryResults(
@@ -197,7 +206,7 @@ public class JDBCDriverComparisonTest {
         });
   }
 
-  @ParameterizedTest
+  @ParameterizedTest(autoCloseArguments = false)
   @MethodSource("provideMetadataMethods")
   @DisplayName("Compare Metadata API Results")
   void compareMetadataResults(
@@ -227,7 +236,7 @@ public class JDBCDriverComparisonTest {
         });
   }
 
-  @ParameterizedTest
+  @ParameterizedTest(autoCloseArguments = false)
   @MethodSource("provideResultSetMethods")
   @DisplayName("Compare ResultSet API Results")
   void compareResultSetResults(
@@ -254,7 +263,7 @@ public class JDBCDriverComparisonTest {
         });
   }
 
-  @ParameterizedTest
+  @ParameterizedTest(autoCloseArguments = false)
   @MethodSource("provideResultSetMetaDataMethods")
   @DisplayName("Compare ResultSetMetaData API Results")
   void compareResultSetMetaDataResults(
@@ -283,7 +292,7 @@ public class JDBCDriverComparisonTest {
         });
   }
 
-  @ParameterizedTest
+  @ParameterizedTest(autoCloseArguments = false)
   @MethodSource("provideConnectionMethods")
   @DisplayName("Compare Connection API Results")
   void compareConnectionResults(
