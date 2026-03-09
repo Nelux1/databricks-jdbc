@@ -230,19 +230,6 @@ public class JulLogger implements JdbcLogger {
         return actualPackageName.substring(0, defaultPrefixIndex + DEFAULT_PACKAGE_PREFIX.length());
       }
     }
-    // Auto-detect the actual package prefix by using the current class
-    // This handles shaded JARs where the package might be relocated
-    String actualPackageName = JulLogger.class.getPackage().getName();
-    // Extract the root prefix (e.g., "jdbc.shaded.v1.0.12.OSS.com.databricks.jdbc"
-    // or "com.databricks.jdbc")
-    if (actualPackageName.contains(DEFAULT_PACKAGE_PREFIX)) {
-      // Find the actual prefix including any shading prefix
-      int defaultPrefixIndex = actualPackageName.indexOf(DEFAULT_PACKAGE_PREFIX);
-      if (defaultPrefixIndex > 0) {
-        // Include everything up to and including the default prefix
-        return actualPackageName.substring(0, defaultPrefixIndex + DEFAULT_PACKAGE_PREFIX.length());
-      }
-    }
     return DEFAULT_PACKAGE_PREFIX;
   }
 
