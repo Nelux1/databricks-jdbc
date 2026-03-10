@@ -1104,6 +1104,11 @@ public class DatabricksConnectionContext implements IDatabricksConnectionContext
   }
 
   @Override
+  public boolean treatMetadataCatalogNameAsPattern() {
+    return getParameter(DatabricksJdbcUrlParams.TREAT_METADATA_CATALOG_NAME_AS_PATTERN).equals("1");
+  }
+
+  @Override
   public boolean getEnableMetricViewMetadata() {
     return getParameter(DatabricksJdbcUrlParams.ENABLE_METRIC_VIEW_METADATA).equals("1");
   }
