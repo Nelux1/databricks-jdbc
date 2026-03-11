@@ -886,13 +886,6 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
     return false;
   }
 
-  @Override
-  public boolean supportsSharding() throws SQLException {
-    LOGGER.debug("public boolean supportsSharding()");
-    throwExceptionIfConnectionIsClosed();
-    return false;
-  }
-
   /**
    * Builds the result set for stored procedures metadata.
    *
@@ -1551,7 +1544,7 @@ public class DatabricksDatabaseMetaData implements DatabaseMetaData {
           .listFunctions(session, catalog, schemaPattern, functionNamePattern);
     } catch (Exception e) {
       LOGGER.error(e, "Unable to fetch functions, returning empty result set {}", e);
-      return metadataResultSetBuilder.getFunctionsResult(catalog, List.of());
+      return metadataResultSetBuilder.getFunctionsResult(catalog, Collections.emptyList());
     }
   }
 

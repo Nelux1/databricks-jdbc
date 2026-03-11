@@ -25,6 +25,7 @@ import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
 import com.databricks.jdbc.telemetry.TelemetryClientFactory;
 import com.databricks.jdbc.telemetry.TelemetryHelper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -729,7 +730,7 @@ public class DatabricksConnection implements IDatabricksConnection, IDatabricksC
         LOGGER.error(errorMessage);
         throw new DatabricksSQLClientInfoException(
             errorMessage,
-            Map.of(name, ClientInfoStatus.REASON_UNKNOWN_PROPERTY),
+            ImmutableMap.of(name, ClientInfoStatus.REASON_UNKNOWN_PROPERTY),
             DatabricksDriverErrorCode.INPUT_VALIDATION_ERROR);
       }
     }
@@ -876,61 +877,6 @@ public class DatabricksConnection implements IDatabricksConnection, IDatabricksC
   public void closeStatement(IDatabricksStatement statement) {
     LOGGER.debug("public void closeStatement(IDatabricksStatement statement)");
     this.statementSet.remove(statement);
-  }
-
-  @Override
-  public void beginRequest() {
-    LOGGER.debug("public void beginRequest()");
-    LOGGER.warn("public void beginRequest() is a no-op method");
-  }
-
-  @Override
-  public void endRequest() {
-    LOGGER.debug("public void endRequest()");
-    LOGGER.warn("public void endRequest() is a no-op method");
-  }
-
-  @Override
-  public boolean setShardingKeyIfValid(
-      ShardingKey shardingKey, ShardingKey superShardingKey, int timeout)
-      throws DatabricksSQLFeatureNotImplementedException {
-    LOGGER.debug(
-        "public boolean setShardingKeyIfValid(ShardingKey shardingKey = {},ShardingKey superShardingKey = {}, int timeout = {})",
-        shardingKey,
-        superShardingKey,
-        timeout);
-    throw new DatabricksSQLFeatureNotImplementedException(
-        "Not implemented in DatabricksConnection - setShardingKeyIfValid(ShardingKey shardingKey, ShardingKey superShardingKey, int timeout)");
-  }
-
-  @Override
-  public boolean setShardingKeyIfValid(ShardingKey shardingKey, int timeout)
-      throws DatabricksSQLFeatureNotImplementedException {
-    LOGGER.debug(
-        "public boolean setShardingKeyIfValid(ShardingKey shardingKey = {}, int timeout = {})",
-        shardingKey,
-        timeout);
-    throw new DatabricksSQLFeatureNotImplementedException(
-        "Not implemented in DatabricksConnection - setShardingKeyIfValid(ShardingKey shardingKey, int timeout)");
-  }
-
-  @Override
-  public void setShardingKey(ShardingKey shardingKey, ShardingKey superShardingKey)
-      throws DatabricksSQLFeatureNotImplementedException {
-    LOGGER.debug(
-        "public void setShardingKey(ShardingKey shardingKey = {}, ShardingKey superShardingKey = {})",
-        shardingKey,
-        superShardingKey);
-    throw new DatabricksSQLFeatureNotImplementedException(
-        "Not implemented in DatabricksConnection - setShardingKey(ShardingKey shardingKey, ShardingKey superShardingKey)");
-  }
-
-  @Override
-  public void setShardingKey(ShardingKey shardingKey)
-      throws DatabricksSQLFeatureNotImplementedException {
-    LOGGER.debug("public void setShardingKey(ShardingKey shardingKey = {})", shardingKey);
-    throw new DatabricksSQLFeatureNotImplementedException(
-        "Not implemented in DatabricksConnection - setShardingKey(ShardingKey shardingKey)");
   }
 
   @Override

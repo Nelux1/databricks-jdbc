@@ -9,6 +9,7 @@ import com.databricks.jdbc.exception.DatabricksSSLException;
 import com.databricks.jdbc.log.JdbcLogger;
 import com.databricks.jdbc.log.JdbcLoggerFactory;
 import com.databricks.jdbc.model.telemetry.enums.DatabricksDriverErrorCode;
+import com.google.common.collect.ImmutableSet;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -635,7 +636,7 @@ public class ConfiguratorUtils {
 
         if (acceptUndeterminedCertificateRevocation) {
           revocationChecker.setOptions(
-              Set.of(
+              ImmutableSet.of(
                   PKIXRevocationChecker.Option.SOFT_FAIL,
                   PKIXRevocationChecker.Option.NO_FALLBACK,
                   PKIXRevocationChecker.Option.PREFER_CRLS));
