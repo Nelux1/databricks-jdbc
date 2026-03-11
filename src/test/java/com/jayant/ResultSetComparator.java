@@ -1,5 +1,7 @@
 package com.jayant;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -62,7 +64,23 @@ public class ResultSetComparator {
         return Arrays.equals((Object[]) result1, (Object[]) result2);
       }
     }
+    if (result1 instanceof Reader && result2 instanceof Reader) {
+      return readersHaveSameContent((Reader) result1, (Reader) result2);
+    }
     return false;
+  }
+
+  private static boolean readersHaveSameContent(Reader r1, Reader r2) {
+    try {
+      int c1, c2;
+      while ((c1 = r1.read()) != -1) {
+        c2 = r2.read();
+        if (c1 != c2) return false;
+      }
+      return r2.read() == -1; // both should be exhausted
+    } catch (IOException e) {
+      return false;
+    }
   }
 
   private static List<String> compareMetadata(ResultSetMetaData md1, ResultSetMetaData md2)

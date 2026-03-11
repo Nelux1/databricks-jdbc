@@ -1,6 +1,7 @@
 package com.jayant.testparams;
 
 import static com.jayant.testparams.ParamUtils.putInMapForKey;
+import static com.jayant.testparams.ParamUtils.registerCombinations;
 
 import java.lang.reflect.Field;
 import java.sql.Connection;
@@ -11,91 +12,312 @@ import java.util.*;
 
 public class DatabaseMetaDataTestParams implements TestParams {
 
+  // ---------------------------------------------------------------------------
+  // Argument variant lists — functionToArgsMaps to the test plan's argument variant table.
+  //
+  // Workspace: peco testing workspace
+  //   catalog  : "comparator-tests" (hyphen) / "comparator_tests" (underscore)
+  //   schema   : "oss-jdbc-tests" (hyphen) / "oss_jdbc_tests" (underscore)
+  //   table    : "test-result-set-types" (hyphen) / "test_result_set_types" (underscore)
+  //   column   : "varchar-column" (hyphen) / "varchar_column" (underscore)
+  //   function : "area-calc" (hyphen) / "area_calc" (underscore)
+  //
+  // Hyphen variants are used as the base for exact match.
+  // Underscore variants test unescaped _ (wildcard) and escaped \_ (literal) behavior.
+  // ---------------------------------------------------------------------------
+
+  static final List<Object> CATALOG_VARIANTS =
+      Arrays.asList(
+          null, // no filter
+          "%", // match all
+          "", // empty string
+          "comparator-tests", // exact (hyphen)
+          "COMPARATOR-TESTS", // uppercase
+          "comparator_tests", // unescaped _ wildcard
+          "comp%", // prefix pattern
+          "comparator\\_tests", // escaped _ literal
+          "nonexistent");
+
+  static final List<Object> SCHEMA_PATTERN_VARIANTS =
+      Arrays.asList(
+          null, // no filter
+          "%", // match all
+          "", // empty string
+          "oss-jdbc-tests", // exact (hyphen)
+          "OSS-JDBC-TESTS", // uppercase
+          "oss_jdbc_tests", // unescaped _ wildcard
+          "oss%", // prefix pattern
+          "oss\\_jdbc\\_tests", // escaped _ literal
+          "nonexistent");
+
+  static final List<Object> TABLE_VARIANTS =
+      Arrays.asList(
+          null, // no filter
+          "%", // match all
+          "", // empty string
+          "test-result-set-types", // exact (hyphen)
+          "TEST-RESULT-SET-TYPES", // uppercase
+          "test_result_set_types", // unescaped _ wildcard
+          "test%", // prefix pattern
+          "test\\_result\\_set\\_types", // escaped _ literal
+          "nonexistent");
+
+  static final List<Object> COLUMN_VARIANTS =
+      Arrays.asList(
+          null, // no filter
+          "%", // match all
+          "", // empty string
+          "varchar-column", // exact (hyphen)
+          "VARCHAR-COLUMN", // uppercase
+          "varchar_column", // unescaped _ wildcard
+          "varchar%", // prefix pattern
+          "varchar\\_column", // escaped _ literal
+          "nonexistent");
+
+  static final List<Object> FUNCTION_VARIANTS =
+      Arrays.asList(
+          null, // no filter
+          "%", // match all
+          "", // empty string
+          "area-calc", // exact (hyphen)
+          "AREA-CALC", // uppercase
+          "area_calc", // unescaped _ wildcard
+          "area%", // prefix pattern
+          "area\\_calc", // escaped _ literal
+          "nonexistent");
+
+  // 7 type-filter variants for getTables — independent dimension
+  static final List<Object> TABLE_TYPE_VARIANTS =
+      Arrays.asList(
+          null,
+          new String[] {"TABLE"},
+          new String[] {"VIEW"},
+          new String[] {"TABLE", "VIEW"},
+          new String[] {},
+          new String[] {"NONEXISTENT_TYPE"},
+          new String[] {"table"});
+
+  // ---------------------------------------------------------------------------
+  // Key method variant lists — patterns not supported, exact-match + null only
+  // ---------------------------------------------------------------------------
+
+  // Exact-match catalog/schema for key methods (no patterns)
+  static final List<Object> KEYS_CATALOG_VARIANTS = Arrays.asList(null, "comparator_tests");
+
+  static final List<Object> KEYS_SCHEMA_VARIANTS = Arrays.asList(null, "oss_jdbc_tests");
+
+  // For getPrimaryKeys: tables with PK + no-PK negative case
+  static final List<Object> PK_TABLE_VARIANTS =
+      Arrays.asList(
+          null,
+          "test_result_set_types", // PK(id, varchar_column)
+          "no_constraints", // no PK — negative case
+          "fk_child", // PK(child_id)
+          "fk_parent" // PK(parent_id)
+          );
+
+  // For getExportedKeys: parent tables
+  static final List<Object> PARENT_TABLE_VARIANTS = Arrays.asList(null, "fk_parent");
+
+  // For getImportedKeys: child tables + no-FK negative case
+  static final List<Object> FK_TABLE_VARIANTS =
+      Arrays.asList(
+          null,
+          "fk_child", // has FK → fk_parent
+          "no_constraints", // no FK — negative case
+          "test_result_set_types" // no FK
+          );
+
+  // ---------------------------------------------------------------------------
+  // Test registration
+  // ---------------------------------------------------------------------------
+
   @Override
   public Map<Map.Entry<String, Integer>, Set<Object[]>> getFunctionToArgsMap() {
     Map<Map.Entry<String, Integer>, Set<Object[]>> functionToArgsMap = new HashMap<>();
-    putInMapForKey(
+    registerResultSetMethods(functionToArgsMap);
+    registerScalarMethods(functionToArgsMap);
+    return functionToArgsMap;
+  }
+
+  private void registerResultSetMethods(
+      Map<Map.Entry<String, Integer>, Set<Object[]>> functionToArgsMap) {
+    // 1.1 getCatalogs() — 0-arg, auto-tested by reflection. Nothing to register.
+
+    // 1.2 getSchemas(catalog, schemaPattern)
+    registerCombinations(
+        functionToArgsMap, "getSchemas", CATALOG_VARIANTS, SCHEMA_PATTERN_VARIANTS);
+
+    // 1.3 getTables(catalog, schemaPattern, tableNamePattern, types[])
+    registerCombinations(
         functionToArgsMap,
-        Map.entry("getTables", 4),
-        new String[] {"main", "tpcds_sf100_delta", "%", null});
-    putInMapForKey(
+        "getTables",
+        CATALOG_VARIANTS,
+        SCHEMA_PATTERN_VARIANTS,
+        TABLE_VARIANTS,
+        TABLE_TYPE_VARIANTS);
+
+    // 1.4 getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern)
+    registerCombinations(
         functionToArgsMap,
-        Map.entry("getTablePrivileges", 3),
-        new String[] {"main", "tpcds_sf100_delta", "%"});
-    putInMapForKey(functionToArgsMap, Map.entry("getSchemas", 2), new String[] {"main", "tpcds_%"});
-    putInMapForKey(
+        "getColumns",
+        CATALOG_VARIANTS,
+        SCHEMA_PATTERN_VARIANTS,
+        TABLE_VARIANTS,
+        COLUMN_VARIANTS);
+
+    // 1.5 getTableTypes — 0-arg, auto-tested by reflection
+    // 1.6 getTypeInfo — 0-arg, auto-tested by reflection
+
+    // 1.7 getPrimaryKeys — exact-match only (patterns not supported)
+    registerCombinations(
         functionToArgsMap,
-        Map.entry("getColumns", 4),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales", "%"});
-    putInMapForKey(
+        "getPrimaryKeys",
+        KEYS_CATALOG_VARIANTS,
+        KEYS_SCHEMA_VARIANTS,
+        PK_TABLE_VARIANTS);
+
+    // 1.8 getImportedKeys — exact-match only (patterns not supported)
+    registerCombinations(
         functionToArgsMap,
-        Map.entry("getPseudoColumns", 4),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales", "%"});
-    putInMapForKey(
+        "getImportedKeys",
+        KEYS_CATALOG_VARIANTS,
+        KEYS_SCHEMA_VARIANTS,
+        FK_TABLE_VARIANTS);
+
+    // 1.9 getExportedKeys — exact-match only (both drivers return empty)
+    registerCombinations(
         functionToArgsMap,
-        Map.entry("getColumnPrivileges", 4),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales", "%"});
-    putInMapForKey(
+        "getExportedKeys",
+        KEYS_CATALOG_VARIANTS,
+        KEYS_SCHEMA_VARIANTS,
+        PARENT_TABLE_VARIANTS);
+    // 1.10 getCrossReference — curated cases (6 args not independent, patterns not supported)
+    Object[][] crossRefCases = {
+      {null, null, null, null, null, null},
+      {null, null, null, "comparator_tests", "oss_jdbc_tests", "fk_child"},
+      {"comparator_tests", "oss_jdbc_tests", "fk_parent", null, null, null},
+      {
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "fk_parent",
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "fk_child"
+      },
+      {
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "fk_parent",
+        "comparator_tests",
+        "oss-jdbc-tests",
+        "fk_child_cross_schema"
+      },
+      {
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "fk_parent",
+        "comparator-tests",
+        "oss_jdbc_tests",
+        "fk_child_cross_catalog"
+      },
+      {
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "no_constraints",
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "no_constraints"
+      },
+      {
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "fk_child",
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "fk_parent"
+      },
+      {
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "nonexistent",
+        "comparator_tests",
+        "oss_jdbc_tests",
+        "nonexistent"
+      },
+    };
+    for (Object[] args : crossRefCases) {
+      putInMapForKey(functionToArgsMap, Map.entry("getCrossReference", 6), args);
+    }
+    // 1.11 getFunctions(catalog, schemaPattern, functionNamePattern)
+    registerCombinations(
         functionToArgsMap,
-        Map.entry("getVersionColumns", 3),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales"});
-    putInMapForKey(
-        functionToArgsMap,
-        Map.entry("getFunctions", 3),
-        new String[] {"main", "tpcds_sf100_delta", "aggregate"});
+        "getFunctions",
+        CATALOG_VARIANTS,
+        SCHEMA_PATTERN_VARIANTS,
+        FUNCTION_VARIANTS);
+    // 1.12 Stub methods — all return empty ResultSet; single representative arg set each
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getFunctionColumns", 4),
-        new String[] {"main", "tpcds_sf100_delta", "aggregate", "%"});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "area_calc", "%"});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getProcedures", 3),
-        new String[] {"main", "tpcds_sf100_delta", "%"});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "%"});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getProcedureColumns", 4),
-        new String[] {"main", "tpcds_sf100_delta", "%", "%"});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "%", "%"});
     putInMapForKey(
         functionToArgsMap,
-        Map.entry("getPrimaryKeys", 3),
-        new String[] {"main", "oss_jdbc_tests", "test_result_set_types"});
+        Map.entry("getColumnPrivileges", 4),
+        new String[] {"comparator_tests", "oss_jdbc_tests", "test_result_set_types", "%"});
     putInMapForKey(
         functionToArgsMap,
-        Map.entry("getImportedKeys", 3),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales"});
-    putInMapForKey(
-        functionToArgsMap,
-        Map.entry("getExportedKeys", 3),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales"});
-    // TODO: Add a proper cross reference test
-    putInMapForKey(
-        functionToArgsMap,
-        Map.entry("getCrossReference", 6),
-        new String[] {
-          "main", "tpcds_sf100_delta", "catalog_sales", "main", "tpcds_sf100_delta", "catalog_sales"
-        });
+        Map.entry("getTablePrivileges", 3),
+        new String[] {"comparator_tests", "oss_jdbc_tests", "%"});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getIndexInfo", 5),
-        new Object[] {"main", "tpcds_sf100_delta", "catalog_sales", true, false});
+        new Object[] {"comparator_tests", "oss_jdbc_tests", "test_result_set_types", true, false});
+    putInMapForKey(
+        functionToArgsMap,
+        Map.entry("getVersionColumns", 3),
+        new String[] {"comparator_tests", "oss_jdbc_tests", "test_result_set_types"});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getUDTs", 4),
-        new String[] {"main", "tpcds_sf100_delta", "%", null});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "%", null});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getSuperTypes", 3),
-        new String[] {"main", "tpcds_sf100_delta", "%"});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "%"});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getSuperTables", 3),
-        new String[] {"main", "tpcds_sf100_delta", "catalog_sales"});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "test_result_set_types"});
     putInMapForKey(
         functionToArgsMap,
         Map.entry("getAttributes", 4),
-        new String[] {"main", "tpcds_sf100_delta", "%", "%"});
+        new String[] {"comparator_tests", "oss_jdbc_tests", "%", "%"});
+    putInMapForKey(
+        functionToArgsMap,
+        Map.entry("getPseudoColumns", 4),
+        new String[] {"comparator_tests", "oss_jdbc_tests", "test_result_set_types", "%"});
+    // getBestRowIdentifier — 3 scope values
+    for (Integer scope : getAllBestRowIdentifierScopes()) {
+      putInMapForKey(
+          functionToArgsMap,
+          Map.entry("getBestRowIdentifier", 5),
+          new Object[] {
+            "comparator_tests", "oss_jdbc_tests", "test_result_set_types", scope, true
+          });
+    }
+  }
 
-    // Methods for ResultSet concurrency and visibility
+  private void registerScalarMethods(
+      Map<Map.Entry<String, Integer>, Set<Object[]>> functionToArgsMap) {
     for (Integer type : getResultSetTypes()) {
       putInMapForKey(
           functionToArgsMap, Map.entry("supportsResultSetType", 1), new Integer[] {type});
@@ -124,12 +346,6 @@ public class DatabaseMetaDataTestParams implements TestParams {
       putInMapForKey(
           functionToArgsMap, Map.entry("supportsTransactionIsolationLevel", 1), new Integer[] {i});
     }
-    for (Integer i : getAllBestRowIdentifierScopes()) {
-      putInMapForKey(
-          functionToArgsMap,
-          Map.entry("getBestRowIdentifier", 5),
-          new Object[] {"main", "tpcds_sf100_delta", "catalog_sales", i, true});
-    }
     for (Integer i : getResultSetHoldability()) {
       putInMapForKey(
           functionToArgsMap, Map.entry("supportsResultSetHoldability", 1), new Integer[] {i});
@@ -150,7 +366,6 @@ public class DatabaseMetaDataTestParams implements TestParams {
             functionToArgsMap, Map.entry("supportsConvert", 2), new Integer[] {fromType, toType});
       }
     }
-    return functionToArgsMap;
   }
 
   @Override

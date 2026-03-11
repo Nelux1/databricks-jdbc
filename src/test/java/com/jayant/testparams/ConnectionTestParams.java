@@ -9,7 +9,7 @@ import java.util.concurrent.Executors;
 public class ConnectionTestParams implements TestParams {
 
   private static final String parameterizedQuery =
-      "SELECT * FROM main.tpcds_sf100_delta.catalog_sales where cs_bill_customer_sk = ? and cs_warehouse_sk = ? limit 5";
+      "SELECT * FROM samples.tpcds_sf1.catalog_sales where cs_bill_customer_sk = ? and cs_warehouse_sk = ? limit 5";
 
   @Override
   public Set<Map.Entry<String, Integer>> getAcceptedKnownDiffs() {
