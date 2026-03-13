@@ -371,9 +371,6 @@ public class DatabaseMetaDataTestParams implements TestParams {
   @Override
   public Set<Map.Entry<String, Integer>> getAcceptedKnownDiffs() {
     Set<Map.Entry<String, Integer>> acceptedKnownDiffs = new HashSet<>();
-    // getSchemas with no args returns empty result set for SEA
-    acceptedKnownDiffs.add(Map.entry("getSchemas", 0));
-
     // don't compare classes
     acceptedKnownDiffs.add(Map.entry("getConnection", 0));
 

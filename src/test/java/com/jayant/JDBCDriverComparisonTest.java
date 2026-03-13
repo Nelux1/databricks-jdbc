@@ -32,7 +32,7 @@ public class JDBCDriverComparisonTest {
   private static final String OLD_DRIVER_JDBC_URL =
       "jdbc:databricks://adb-6436897454825492.12.azuredatabricks.net:443/default;ssl=1;authMech=3;httpPath=/sql/1.0/warehouses/2f03dd43e35e2aa0;UID=token;";
   private static final String OSS_DRIVER_JDBC_URL =
-      "jdbc:databricks://adb-6436897454825492.12.azuredatabricks.net:443/default;ssl=1;authMech=3;httpPath=/sql/1.0/warehouses/2f03dd43e35e2aa0";
+      "jdbc:databricks://adb-6436897454825492.12.azuredatabricks.net:443/default;ssl=1;authMech=3;httpPath=/sql/1.0/warehouses/2f03dd43e35e2aa0;useThriftClient=1";
   private static final String OSS_SEA_DRIVER_JDBC_URL =
       "jdbc:databricks://adb-6436897454825492.12.azuredatabricks.net:443/default;ssl=1;authMech=3;httpPath=/sql/1.0/warehouses/2f03dd43e35e2aa0;useThriftClient=0";
   private static Connection oldDriverConnection;
