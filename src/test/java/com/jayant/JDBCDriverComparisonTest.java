@@ -79,14 +79,16 @@ public class JDBCDriverComparisonTest {
     ossSeaConnection = DriverManager.getConnection(OSS_SEA_DRIVER_JDBC_URL, "token", pwd);
 
     String timestamp = Instant.now().toString().replaceAll("[:.]+", "-");
-    reporter = new TestReporter(Path.of("jdbc-comparison-report-" + timestamp + ".txt"));
+    List<String> connectionUrls = new ArrayList<>();
     if (COMPARATOR_MODE.equals("simba-vs-sea") || COMPARATOR_MODE.equals("all")) {
-      reporter.addConnectionUrl("Old Driver (2.7.6)", OLD_DRIVER_JDBC_URL);
+      connectionUrls.add("Old Driver (2.7.6): " + OLD_DRIVER_JDBC_URL);
     }
     if (COMPARATOR_MODE.equals("thrift-vs-sea") || COMPARATOR_MODE.equals("all")) {
-      reporter.addConnectionUrl("OSS Thrift", OSS_DRIVER_JDBC_URL);
+      connectionUrls.add("OSS Thrift: " + OSS_DRIVER_JDBC_URL);
     }
-    reporter.addConnectionUrl("OSS SEA", OSS_SEA_DRIVER_JDBC_URL);
+    connectionUrls.add("OSS SEA: " + OSS_SEA_DRIVER_JDBC_URL);
+    reporter =
+        new TestReporter(Path.of("jdbc-comparison-report-" + timestamp + ".txt"), connectionUrls);
 
     String queryResultSetTypesTable = "select * from samples.tpch.customer limit 100";
     // Create separate ResultSets for each comparison pair to avoid reuse issues
@@ -106,6 +108,7 @@ public class JDBCDriverComparisonTest {
     if (oldDriverConnection != null) oldDriverConnection.close();
     if (ossThriftConnection != null) ossThriftConnection.close();
     if (ossSeaConnection != null) ossSeaConnection.close();
+    reporter.finish();
     // Clean up temp directory
     if (tempDir != null) {
       Files.walk(tempDir)
@@ -119,7 +122,6 @@ public class JDBCDriverComparisonTest {
                 }
               });
     }
-    reporter.generateReport();
   }
 
   /**
