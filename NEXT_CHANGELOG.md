@@ -13,6 +13,7 @@
 - PECOBLR-1121 Arrow patch to circumvent Arrow issues with JDK 16+.
 
 ### Fixed
+- Fixed Thrift polling infinite loop when server restarts invalidate operation handles, and added configurable timeout (`MetadataOperationTimeout`, default 300s) with sleep between polls for metadata operations.
 - Fixed `DatabricksParameterMetaData.countParameters` and `DatabricksStatement.trimCommentsAndWhitespaces` with a `SqlCommentParser` utility class.
 - Fixed `rollback()` to throw `SQLException` when called in auto-commit mode (no active transaction), aligning with JDBC spec. Previously it silently sent a ROLLBACK command to the server.
 - Fixed `fetchAutoCommitStateFromServer()` to accept both `"1"`/`"0"` and `"true"`/`"false"` responses from `SET AUTOCOMMIT` query, since different server implementations return different formats.
