@@ -231,22 +231,33 @@ public class JDBCDriverComparisonTest {
           DatabaseMetaData metadata1 = conn1.getMetaData();
           DatabaseMetaData metadata2 = conn2.getMetaData();
 
-          Object result1 = ReflectionUtils.executeMethod(metadata1, methodName, args);
-          Object result2 = ReflectionUtils.executeMethod(metadata2, methodName, args);
+          Object result1 = null;
+          Object result2 = null;
+          try {
+            result1 = ReflectionUtils.executeMethod(metadata1, methodName, args);
+            result2 = ReflectionUtils.executeMethod(metadata2, methodName, args);
 
-          ComparisonResult result =
-              ResultSetComparator.compare(
-                  "DatabaseMetaData [" + comparisonName + "]", methodName, args, result1, result2);
-          reporter.addResult(result);
+            ComparisonResult result =
+                ResultSetComparator.compare(
+                    "DatabaseMetaData [" + comparisonName + "]",
+                    methodName,
+                    args,
+                    result1,
+                    result2);
+            reporter.addResult(result);
 
-          if (result.hasDifferences()) {
-            System.err.println(
-                "["
-                    + comparisonName
-                    + "] Differences found in metadata results for method: "
-                    + methodName);
-            System.err.println("Args: " + getStringForArgs(args));
-            System.err.println(result);
+            if (result.hasDifferences()) {
+              System.err.println(
+                  "["
+                      + comparisonName
+                      + "] Differences found in metadata results for method: "
+                      + methodName);
+              System.err.println("Args: " + getStringForArgs(args));
+              System.err.println(result);
+            }
+          } finally {
+            if (result1 instanceof AutoCloseable) ((AutoCloseable) result1).close();
+            if (result2 instanceof AutoCloseable) ((AutoCloseable) result2).close();
           }
         });
   }
