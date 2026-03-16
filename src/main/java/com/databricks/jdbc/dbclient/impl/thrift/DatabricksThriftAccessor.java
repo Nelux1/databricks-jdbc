@@ -817,7 +817,8 @@ final class DatabricksThriftAccessor {
       LOGGER.error(errorMsg);
 
       String sqlState = statusResp.getSqlState();
-      if (QUERY_EXECUTION_TIMEOUT_SQLSTATE.equals(sqlState)) {
+      if (QUERY_EXECUTION_TIMEOUT_SQLSTATE.equals(sqlState)
+          || statusResp.getOperationState() == TOperationState.TIMEDOUT_STATE) {
         throw new DatabricksTimeoutException(
             errorMsg, null, DatabricksDriverErrorCode.OPERATION_TIMEOUT_ERROR);
       }
@@ -854,7 +855,9 @@ final class DatabricksThriftAccessor {
   }
 
   private boolean isErrorOperationState(TOperationState state) {
-    return state == TOperationState.ERROR_STATE || state == TOperationState.CLOSED_STATE;
+    return state == TOperationState.ERROR_STATE
+        || state == TOperationState.CLOSED_STATE
+        || state == TOperationState.TIMEDOUT_STATE;
   }
 
   private boolean isPendingOperationState(TOperationState state) {

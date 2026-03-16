@@ -894,6 +894,70 @@ public class DatabricksThriftAccessorTest {
   }
 
   @Test
+  void testTimedOutStateInDirectResultsThrowsTimeoutException()
+      throws TException, SQLException, DatabricksValidationException {
+    // Reproduces the interactive cluster scenario: server enforces queryTimeout and returns
+    // TIMEDOUT_STATE directly in directResults before the client polling loop starts (e.g. query
+    // is queued under load and times out while waiting). Previously isErrorOperationState excluded
+    // TIMEDOUT_STATE, causing the driver to fall through to executeFetchRequest and throw
+    // DatabricksHttpException instead.
+    setup(true);
+
+    TExecuteStatementReq request = new TExecuteStatementReq();
+    TSparkDirectResults timedOutDirectResults =
+        new TSparkDirectResults()
+            .setOperationStatus(
+                new TGetOperationStatusResp()
+                    .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS))
+                    .setOperationState(TOperationState.TIMEDOUT_STATE)
+                    .setErrorMessage("Query timed out after 1 seconds"));
+    TExecuteStatementResp tExecuteStatementResp =
+        new TExecuteStatementResp()
+            .setOperationHandle(tOperationHandle)
+            .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS))
+            .setDirectResults(timedOutDirectResults);
+    when(thriftClient.ExecuteStatement(request)).thenReturn(tExecuteStatementResp);
+
+    Statement statement = mock(Statement.class);
+    when(parentStatement.getStatement()).thenReturn(statement);
+    when(statement.getQueryTimeout()).thenReturn(300); // Long client timeout — server fires first
+
+    assertThrows(
+        DatabricksTimeoutException.class,
+        () -> accessor.execute(request, parentStatement, session, StatementType.SQL));
+  }
+
+  @Test
+  void testTimedOutStateDuringPollingThrowsTimeoutException()
+      throws TException, SQLException, DatabricksValidationException {
+    // Server returns RUNNING_STATE initially, then TIMEDOUT_STATE during polling —
+    // e.g. cluster enforces its own max query duration while client timeout is longer.
+    setup(true);
+
+    TExecuteStatementReq request = new TExecuteStatementReq();
+    TExecuteStatementResp tExecuteStatementResp =
+        new TExecuteStatementResp()
+            .setOperationHandle(tOperationHandle)
+            .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS));
+    when(thriftClient.ExecuteStatement(request)).thenReturn(tExecuteStatementResp);
+
+    TGetOperationStatusResp timedOutStatusResp =
+        new TGetOperationStatusResp()
+            .setStatus(new TStatus().setStatusCode(TStatusCode.SUCCESS_STATUS))
+            .setOperationState(TOperationState.TIMEDOUT_STATE)
+            .setErrorMessage("Query timed out after 1 seconds");
+    when(thriftClient.GetOperationStatus(operationStatusReq)).thenReturn(timedOutStatusResp);
+
+    Statement statement = mock(Statement.class);
+    when(parentStatement.getStatement()).thenReturn(statement);
+    when(statement.getQueryTimeout()).thenReturn(300); // Long client timeout — server fires first
+
+    assertThrows(
+        DatabricksTimeoutException.class,
+        () -> accessor.execute(request, parentStatement, session, StatementType.SQL));
+  }
+
+  @Test
   void testFetchResultsWithCustomMaxRowsPerBlock()
       throws TException, SQLException, DatabricksValidationException {
     int customMaxRows = 500000;
