@@ -21,6 +21,7 @@ import com.databricks.jdbc.common.util.ProtocolFeatureUtil;
 import com.databricks.jdbc.common.util.WildcardUtil;
 import com.databricks.jdbc.dbclient.IDatabricksClient;
 import com.databricks.jdbc.dbclient.IDatabricksMetadataClient;
+import com.databricks.jdbc.dbclient.impl.common.CommandConstants;
 import com.databricks.jdbc.dbclient.impl.common.MetadataResultSetBuilder;
 import com.databricks.jdbc.dbclient.impl.common.StatementId;
 import com.databricks.jdbc.dbclient.impl.sqlexec.CommandBuilder;
@@ -600,6 +601,76 @@ public class DatabricksThriftServiceClient implements IDatabricksClient, IDatabr
     TFetchResultsResp response = (TFetchResultsResp) thriftAccessor.getThriftResponse(request);
     return metadataResultSetBuilder.getFunctionsResult(
         catalog, extractRowsFromColumnar(response.getResults()));
+  }
+
+  @Override
+  public DatabricksResultSet listProcedures(
+      IDatabricksSession session,
+      String catalog,
+      String schemaNamePattern,
+      String procedureNamePattern)
+      throws SQLException {
+    LOGGER.debug(
+        "Fetching procedures using SQL via Thrift client. Session {}, catalog {}, schemaPattern {}, procedureNamePattern {}.",
+        session.toString(),
+        catalog,
+        schemaNamePattern,
+        procedureNamePattern);
+    DatabricksThreadContextHolder.setSessionId(session.getSessionId());
+
+    if (!metadataResultSetBuilder.shouldAllowCatalogAccess(catalog, null, session)) {
+      return metadataResultSetBuilder.getProceduresResult(new ArrayList<>());
+    }
+
+    Map<Integer, ImmutableSqlParameter> params = new HashMap<>();
+    String sql =
+        CommandConstants.buildProceduresSQL(
+            catalog, schemaNamePattern, procedureNamePattern, params);
+    return metadataResultSetBuilder.getProceduresResult(
+        executeStatement(
+            sql,
+            session.getComputeResource(),
+            params,
+            StatementType.METADATA,
+            session,
+            null,
+            MetadataOperationType.GET_PROCEDURES));
+  }
+
+  @Override
+  public DatabricksResultSet listProcedureColumns(
+      IDatabricksSession session,
+      String catalog,
+      String schemaNamePattern,
+      String procedureNamePattern,
+      String columnNamePattern)
+      throws SQLException {
+    LOGGER.debug(
+        "Fetching procedure columns using SQL via Thrift client. Session {}, catalog {}, schemaPattern {}, procedureNamePattern {}, columnNamePattern {}.",
+        session.toString(),
+        catalog,
+        schemaNamePattern,
+        procedureNamePattern,
+        columnNamePattern);
+    DatabricksThreadContextHolder.setSessionId(session.getSessionId());
+
+    if (!metadataResultSetBuilder.shouldAllowCatalogAccess(catalog, null, session)) {
+      return metadataResultSetBuilder.getProcedureColumnsResult(new ArrayList<>());
+    }
+
+    Map<Integer, ImmutableSqlParameter> params = new HashMap<>();
+    String sql =
+        CommandConstants.buildProcedureColumnsSQL(
+            catalog, schemaNamePattern, procedureNamePattern, columnNamePattern, params);
+    return metadataResultSetBuilder.getProcedureColumnsResult(
+        executeStatement(
+            sql,
+            session.getComputeResource(),
+            params,
+            StatementType.METADATA,
+            session,
+            null,
+            MetadataOperationType.GET_PROCEDURE_COLUMNS));
   }
 
   @Override

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Added `DatabaseMetaData.getProcedures()` and `DatabaseMetaData.getProcedureColumns()` to discover stored procedures and their parameters. Queries `information_schema.routines` and `information_schema.parameters` using parameterized SQL for both SEA and Thrift transports.
 - Added connection property `OAuthWebServerTimeout` to configure the OAuth browser authentication timeout for U2M (user-to-machine) flows, and also updated hardcoded 1-hour timeout to default 120 seconds timeout.
 - Added connection property `UseQueryForMetadata` to use SQL SHOW commands instead of Thrift RPCs for metadata operations (getCatalogs, getSchemas, getTables, getColumns, getFunctions). This fixes incorrect wildcard matching where `_` was treated as a single-character wildcard in Thrift metadata pattern filters.
 - Added connection property `TreatMetadataCatalogNameAsPattern` to control whether catalog names are treated as patterns in Thrift metadata RPCs. When disabled (default), unescaped `_` in catalog names is escaped to prevent single-character wildcard matching. This aligns with JDBC spec which treats catalogName as identifier and not pattern.
@@ -11,6 +12,9 @@
 - Bumped `com.fasterxml.jackson.core:jackson-core` from 2.18.3 to 2.18.6.
 - Fat jar now routes SDK and Apache HTTP client logs through Java Util Logging (JUL), removing the need for external logging libraries.
 - PECOBLR-1121 Arrow patch to circumvent Arrow issues with JDK 16+.
+- Log timestamps now explicitly display timezone.
+- **[Breaking Change]** `PreparedStatement.setTimestamp(int, Timestamp, Calendar)` now properly applies Calendar timezone conversion using LocalDateTime pattern (inline with `getTimestamp`). Previously Calendar parameter was ineffective.
+- `DatabaseMetaData.getColumns()` with null catalog parameter now retrieves columns from all available catalogs when using SQL Execution API.
 
 ### Fixed
 - Fixed statement timeout when the server returns `TIMEDOUT_STATE` directly in the `ExecuteStatement` response (e.g. query queued under load), the driver now throws `SQLTimeoutException` instead of `DatabricksHttpException`.

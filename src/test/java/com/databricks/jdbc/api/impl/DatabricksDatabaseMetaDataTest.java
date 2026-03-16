@@ -13,6 +13,7 @@ import com.databricks.jdbc.common.DatabricksJdbcConstants;
 import com.databricks.jdbc.dbclient.IDatabricksMetadataClient;
 import com.databricks.jdbc.exception.DatabricksSQLException;
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Stream;
@@ -68,6 +69,11 @@ public class DatabricksDatabaseMetaDataTest {
         .thenReturn(Mockito.mock(DatabricksResultSet.class));
     when(metadataClient.listCrossReferences(any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(Mockito.mock(DatabricksResultSet.class));
+    when(metadataClient.listProcedures(any(), any(), any(), any()))
+        .thenAnswer(invocation -> metadataResultSetBuilder.getProceduresResult(new ArrayList<>()));
+    when(metadataClient.listProcedureColumns(any(), any(), any(), any(), any()))
+        .thenAnswer(
+            invocation -> metadataResultSetBuilder.getProcedureColumnsResult(new ArrayList<>()));
     when(connection.getConnection()).thenReturn(Mockito.mock(Connection.class));
     when(session.isOpen()).thenReturn(true);
   }
